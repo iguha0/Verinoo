@@ -1,8 +1,10 @@
-import { test, describe } from 'node:test';
+import { test, describe, after } from 'node:test';
 import assert from 'node:assert';
-import { proveLayer, verifyLayer, computeTraceCommitmentHash } from './groth16';
+import { proveLayer, verifyLayer, computeTraceCommitmentHash, terminateZkWorkers } from './groth16';
 
 describe('Groth16 ZK Layer', () => {
+  after(async () => { await terminateZkWorkers(); });
+
   test('prove + verify roundtrip for honest layer', async () => {
     const input = [0.1, -0.1, 0.2, 0.3];
     const weights = [

@@ -8,6 +8,7 @@ import { Transaction, Block, HeartbeatPayload } from './core/types';
 import { generateKeyPair, publicKeyToAddress, signMessage } from './wallet/crypto';
 import { EventEmitter } from 'events';
 import { resolveFork, planReorg } from './core/fork';
+import { terminateZkWorkers } from './zk/groth16';
 
 export class AINativeNode extends EventEmitter {
   public readonly keyPair: ReturnType<typeof generateKeyPair>;
@@ -142,10 +143,11 @@ export class AINativeNode extends EventEmitter {
     }, 30000));
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
     for (const t of this.timers) clearInterval(t);
     this.p2p.stop();
     this.apiServer?.server?.close?.();
     this.store.close();
+    await terminateZkWorkers();
   }
 }

@@ -125,3 +125,21 @@ export function computeTraceCommitmentHash(
 ): string {
   return computeCommitmentHash(input, weights, output, bias);
 }
+
+/** Terminate the BN254 curve worker pool cached by ffjavascript/snarkjs.
+ *  Without this, every process that generates or verifies proofs keeps a
+ *  worker thread pool alive forever, preventing clean exit and leaking
+ *  memory/threads in long-running nodes. Safe to call multiple times.
+ */
+export async function terminateZkWorkers(): Promise<void> {
+  try {
+    const g = globalThis as Record<string, unknown>;
+    const curve = g.curve_bn128 as { terminate?: () => Promise<void> } | undefined | null;
+    if (curve && typeof curve.terminate === 'function') {
+      await curve.terminate();
+    }
+    g.curve_bn128 = null;
+  } catch {
+    // best-effort cleanup
+  }
+}

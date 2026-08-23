@@ -1,4 +1,4 @@
-import { test, describe } from 'node:test';
+import { test, describe, after } from 'node:test';
 import assert from 'node:assert';
 import {
   generateSetup,
@@ -9,8 +9,11 @@ import {
   deriveLayerWeights,
   buildTraceCommitment,
 } from './circuit';
+import { terminateZkWorkers } from './groth16';
 
 describe('ZK Circuit (hash-based prototype)', () => {
+  after(async () => { await terminateZkWorkers(); });
+
   const spec = {
     index: 1, name: 'attn_0', opType: 'attention' as const,
     inputShape: [1, 4], outputShape: [1, 4], tolerance: 0.001,

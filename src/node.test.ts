@@ -71,7 +71,7 @@ describe('Multi-Node Network', () => {
 
       console.log('\n   ✅ All 3 nodes synced successfully!');
     } finally {
-      node1.stop(); node2.stop(); node3.stop();
+      await node1.stop(); await node2.stop(); await node3.stop();
     }
   });
 });

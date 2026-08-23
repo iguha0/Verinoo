@@ -94,6 +94,6 @@ describe('Live 3-Node Network', () => {
     assert.ok(foundModel, 'our specific model exists on n2');
 
     console.log('\n   ✅ LIVE NETWORK TEST PASSED');
-    n1.stop(); n2.stop(); n3.stop();
+    await n1.stop(); await n2.stop(); await n3.stop();
   });
 });

@@ -23,7 +23,14 @@ program.command('start')
       peers: opts.peers ? opts.peers.split(',').filter(Boolean) : [],
       validator: !!opts.validator,
     });
-    process.on('SIGINT', () => { console.log('\nShutting down...'); node.stop(); process.exit(0); });
+    let shuttingDown = false;
+    process.on('SIGINT', () => {
+      if (shuttingDown) process.exit(0);
+      shuttingDown = true;
+      console.log('\nShutting down...');
+      setTimeout(() => process.exit(0), 3000).unref();
+      node.stop().finally(() => process.exit(0));
+    });
     await node.start();
   });
 
