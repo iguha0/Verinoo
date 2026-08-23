@@ -22,6 +22,7 @@ const TARGETS = [
   { name: 'relu8', main: resolve(root, 'circuits', 'relu8.circom') },
   { name: 'argmax8', main: resolve(root, 'circuits', 'argmax8.circom') },
   { name: 'layernorm8', main: resolve(root, 'circuits', 'layernorm8.circom') },
+  { name: 'zklayer_slim', main: resolve(root, 'circuits', 'zklayer_slim.circom') },
 ];
 
 function run(cmd, args) {

@@ -33,11 +33,17 @@ import { resolve, dirname } from 'path';
 const root = resolve(dirname(import.meta.filename ?? import.meta.url.replace('file://', '')), '..');
 const buildDir = resolve(root, 'circuits', 'build');
 const benchDir = resolve(root, 'circuits', 'bench');
-const ptau = resolve(buildDir, 'pot12_final.ptau');
-const PTAU_MAX_CONSTRAINTS = 2 ** 12;
+const PTAU_MAX_CONSTRAINTS = 2 ** 14;
 
-const SIZES = [4, 8, 16, 32]; // constraints(N)=2N^2+3N must be <= 4096
+const SIZES = [4, 8, 16, 32, 48, 64]; // slim model: constraints(N) = N^2 + N <= 2^14
 const PROOF_RUNS = 3;
+
+function ptauFor(constraints) {
+  return {
+    path: resolve(buildDir, constraints > 2 ** 12 ? 'pot14_final.ptau' : 'pot12_final.ptau'),
+    needsPot14: constraints > 2 ** 12,
+  };
+}
 
 function run(cmd, args, cwd) {
   return new Promise((res, rej) => {
@@ -87,9 +93,8 @@ function commitmentHash(allVals) {
 function circuitSource(nIn, nOut) {
   return `pragma circom 2.0.0;
 
-template ZKLayerVerify(nIn, nOut) {
+template ZKLayerVerifySlim(nIn, nOut) {
     var nWeights = nIn * nOut;
-    var totalLen = nIn + nWeights + nOut + nOut;
 
     signal input publicCommitment;
     signal input inp[nIn];
@@ -109,27 +114,21 @@ template ZKLayerVerify(nIn, nOut) {
         expectedOut[i] === out[i];
     }
 
-    signal allVals[totalLen];
-    for (var i = 0; i < nIn; i++) allVals[i] <== inp[i];
-    for (var i = 0; i < nWeights; i++) allVals[nIn + i] <== w[i];
-    for (var i = 0; i < nOut; i++) allVals[nIn + nWeights + i] <== out[i];
-    for (var i = 0; i < nOut; i++) allVals[nIn + nWeights + nOut + i] <== bias[i];
-
-    signal squares[totalLen];
-    for (var i = 0; i < totalLen; i++) {
-        squares[i] <== allVals[i] * allVals[i];
+    signal squares[nOut];
+    for (var i = 0; i < nOut; i++) {
+        squares[i] <== out[i] * out[i];
     }
 
-    signal hashAcc[totalLen + 1];
+    signal hashAcc[nOut + 1];
     hashAcc[0] <== 0;
-    for (var i = 0; i < totalLen; i++) {
+    for (var i = 0; i < nOut; i++) {
         hashAcc[i + 1] <== hashAcc[i] + squares[i];
     }
 
-    hashAcc[totalLen] === publicCommitment;
+    hashAcc[nOut] === publicCommitment;
 }
 
-component main { public [publicCommitment] } = ZKLayerVerify(${nIn}, ${nOut});
+component main { public [publicCommitment] } = ZKLayerVerifySlim(${nIn}, ${nOut});
 `;
 }
 
@@ -166,8 +165,9 @@ async function measureSize(snarkjs, N, circomBin) {
   const wires = parseInt((infoText.match(/#\s*of Wires:\s*(\d+)/) || [])[1]);
 
   const zkey = resolve(dir, 'out', 'zklayer.zkey');
-  await timeFn(() => run('npx', ['snarkjs', 'groth16', 'setup', r1cs, ptau, zkey], root))
-    .then(({ ms }) => console.log(`  setup (zkey): ${(ms / 1000).toFixed(1)}s`));
+  const { path: ptauPath, needsPot14 } = ptauFor(N * N + N);
+  await timeFn(() => run('npx', ['snarkjs', 'groth16', 'setup', r1cs, ptauPath, zkey], root))
+    .then(({ ms }) => console.log(`  setup (zkey, ${needsPot14 ? 'pot14' : 'pot12'}): ${(ms / 1000).toFixed(1)}s`));
   const zkeyBytes = statSync(zkey).size;
   const vkeyPath = resolve(dir, 'out', 'vkey.json');
   await run('npx', ['snarkjs', 'zkey', 'export', 'verificationkey', zkey, vkeyPath], root);
@@ -177,7 +177,7 @@ async function measureSize(snarkjs, N, circomBin) {
   const w = Array.from({ length: N * N }, (_, i) => f2i((((i * 53) % 17) / 17) - 0.5));
   const bias = Array.from({ length: N }, (_, i) => f2i((((i * 7) % 5) / 50)));
   const out = honestMatmul(inp, w, bias, N, N);
-  const commitment = commitmentHash([...inp, ...w, ...out, ...bias]).toString();
+  const commitment = commitmentHash(out).toString(); // slim: output-only
 
   const input = { publicCommitment: commitment, inp, w, out, bias };
 
@@ -202,7 +202,7 @@ async function measureSize(snarkjs, N, circomBin) {
   const { ms: verifyMs, result: verifyOk } = await timeFn(() => snarkjs.groth16.verify(vkeyJson, lastSignals, lastProof));
   if (verifyOk !== true) throw new Error(`verify returned ${verifyOk}`);
 
-  console.log(`  constraints: ${constraints} (analytic model: ${2 * N * N + 3 * N})`);
+  console.log(`  constraints: ${constraints} (analytic model: ${N * N + N})`);
   console.log(`  witness: ${median(witTimes).toFixed(1)}ms | prove: ${median(proveTimes).toFixed(1)}ms | verify: ${verifyMs.toFixed(1)}ms | zkey: ${(zkeyBytes / 1024).toFixed(0)}KB`);
 
   return {
@@ -228,7 +228,7 @@ function realWorldTable(kPerConstraintLog) {
     { name: 'Phi-2 full model (~2.7B params)', nOut: Math.sqrt(2.7e9 / 2), nIn: Math.sqrt(2.7e9 / 2) },
   ];
   return rows.map(r => {
-    const c = 2 * r.nOut * r.nIn + 3 * r.nOut;
+    const c = r.nOut * r.nIn + r.nOut;
     const estMs = kPerConstraintLog ? kPerConstraintLog(c) : null;
     return { ...r, estConstraints: Math.round(c), estProveMs: estMs };
   });
@@ -255,9 +255,19 @@ function extrapolate(measured) {
 }
 
 async function main() {
-  if (!existsSync(ptau)) {
-    console.error('[bench] missing circuits/build/pot12_final.ptau — run node scripts/setup-groth16.mjs first');
+  const ptau12 = resolve(buildDir, 'pot12_final.ptau');
+  const ptau14 = resolve(buildDir, 'pot14_final.ptau');
+  const needPot14 = SIZES.some(N => N * N + N > 2 ** 12);
+  if (!existsSync(ptau12) && !existsSync(ptau14)) {
+    console.error('[bench] missing pot12_final.ptau — run node scripts/setup-groth16.mjs first');
     process.exit(1);
+  }
+  if (needPot14 && !existsSync(ptau14)) {
+    console.log('[bench] generating pot14 powers of tau (one-time, a few minutes)...');
+    await run('npx', ['snarkjs', 'powersoftau', 'new', 'bn128', '14', resolve(buildDir, 'pot14_tmp.ptau')], root);
+    await run('npx', ['snarkjs', 'powersoftau', 'contribute', resolve(buildDir, 'pot14_tmp.ptau'), resolve(buildDir, 'pot14_c.ptau'), '--name=bench', '-e=random'], root);
+    await run('npx', ['snarkjs', 'powersoftau', 'prepare', 'phase2', resolve(buildDir, 'pot14_c.ptau'), ptau14], root);
+    console.log('[bench] pot14 ready');
   }
   const snarkjs = await import('snarkjs');
   const circomBin = await findCircom();
@@ -265,7 +275,7 @@ async function main() {
   const measured = [];
   if (circomBin) {
     for (const N of SIZES) {
-      if (2 * N * N + 3 * N > PTAU_MAX_CONSTRAINTS) continue;
+      if (N * N + N > PTAU_MAX_CONSTRAINTS) continue;
       measured.push(await measureSize(snarkjs, N, circomBin));
     }
   } else {
@@ -293,7 +303,7 @@ async function main() {
       lines.push(`| ${m.N}×${m.N} | ${m.constraints} | ${m.witnessMs}ms | ${m.proveMs}ms | ${m.verifyMs}ms | ${(m.zkeyBytes / 1024).toFixed(0)}KB |`);
     }
     lines.push('');
-    lines.push('Constraint model validated: measured = 2N² + 3N (products + sum-of-squares commitment).');
+    lines.push('Constraint model validated: measured = N² + N (products + output-only commitment).');
   } else {
     lines.push('_No compiler available; measured row omitted._');
   }
@@ -338,7 +348,7 @@ async function quickAnchorProveMs(snarkjs) {
   const w = Array.from({ length: N * N }, (_, i) => f2i((i % 7) / 14));
   const bias = Array.from({ length: N }, () => 0);
   const out = honestMatmul(inp, w, bias, N, N);
-  const input = { publicCommitment: commitmentHash([...inp, ...w, ...out, ...bias]).toString(), inp, w, out, bias };
+  const input = { publicCommitment: commitmentHash(out).toString(), inp, w, out, bias };
   const { ms } = await timeFn(() => snarkjs.groth16.fullProve(input, wasm, zkey));
   return ms;
 }

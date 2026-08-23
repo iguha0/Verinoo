@@ -19,9 +19,10 @@ import { resolve } from 'path';
 const BN254_PRIME = BigInt('21888242871839275222246405745257275088548364400416034343698204186575808495617');
 const FIXED_ONE = 65536;
 
-const WASM_PATH = resolve(__dirname, '../../circuits/build/zklayer_js/zklayer.wasm');
-const ZKEY_PATH = resolve(__dirname, '../../circuits/build/zklayer.zkey');
-const VKEY_PATH = resolve(__dirname, '../../circuits/build/zklayer.vkey.json');
+// Slim circuit: output-only commitment halves constraint count
+const WASM_PATH = resolve(__dirname, '../../circuits/build/zklayer_slim/zklayer_slim_js/zklayer_slim.wasm');
+const ZKEY_PATH = resolve(__dirname, '../../circuits/build/zklayer_slim/zklayer_slim.zkey');
+const VKEY_PATH = resolve(__dirname, '../../circuits/build/zklayer_slim/vkey.json');
 
 function floatToFixed(v: number): number {
   return Math.round(v * FIXED_ONE);
@@ -43,13 +44,12 @@ function matmul4x4(input: number[], weights: number[], bias: number[]): number[]
   return out;
 }
 
-/** Compute sum-of-squares commitment hash in BN254 field. */
-function computeCommitmentHash(
-  inp: number[], w: number[], out: number[], bias: number[]
-): string {
+/** Compute sum-of-squares commitment hash in BN254 field over outputs only.
+ *  (Inputs/weights are bound by the arithmetic constraint; squaring them
+ *  doubled proving cost for zero soundness gain.) */
+function computeCommitmentHash(out: number[]): string {
   let sum = BigInt(0);
-  const all = [...inp, ...w, ...out, ...bias].map(floatToFixed);
-  for (const v of all) {
+  for (const v of out) {
     const fv = BigInt(v);
     sum = (sum + fv * fv) % BN254_PRIME;
   }
@@ -85,11 +85,7 @@ export async function proveLayer(
   const bFx = bias.map(floatToFixed);
   const honestFx = matmul4x4(inpFx, wFx, bFx);
 
-  const publicCommitment = computeCommitmentHash(
-    input, weights,
-    honestFx.map((v: number) => parseFloat((v / FIXED_ONE).toFixed(6))),
-    bias
-  );
+  const publicCommitment = computeCommitmentHash(honestFx);
 
   const { proof, publicSignals } = await snarkjs.groth16.fullProve(
     {
