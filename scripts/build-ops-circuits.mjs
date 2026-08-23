@@ -21,6 +21,7 @@ const ptau = resolve(buildDir, 'pot12_final.ptau');
 const TARGETS = [
   { name: 'relu8', main: resolve(root, 'circuits', 'relu8.circom') },
   { name: 'argmax8', main: resolve(root, 'circuits', 'argmax8.circom') },
+  { name: 'layernorm8', main: resolve(root, 'circuits', 'layernorm8.circom') },
 ];
 
 function run(cmd, args) {
