@@ -40,15 +40,16 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full technical breakdown of eve
 ## Test Results
 
 ```
-55 tests across 11 suites — all passing
+57 tests across 14 suites — all passing
 ```
 
 | Layer | Tests | Status |
 |---|---|---|
 | Engine | 6 | ✅ |
+| Fork Resolution | 11 | ✅ |
 | Storage | 5 | ✅ |
 | Crypto | 6 | ✅ |
-| P2P | 3 | ✅ |
+| P2P | 4 | ✅ |
 | WASM Runtime | 7 | ✅ |
 | ZK Circuit | 7 | ✅ |
 | ZK Index | 10 | ✅ |

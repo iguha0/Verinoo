@@ -89,4 +89,40 @@ describe('P2P Network', () => {
     p2.stop();
     p3.stop();
   });
+
+  test('no self-connections or duplicate sockets in 3-node mesh', async () => {
+    const p1 = new P2PNetwork('node1', 'addr1', { host: '127.0.0.1', port: 19009, maxPeers: 10 });
+    const p2 = new P2PNetwork('node2', 'addr2', { host: '127.0.0.1', port: 19010, maxPeers: 10 });
+    const p3 = new P2PNetwork('node3', 'addr3', { host: '127.0.0.1', port: 19011, maxPeers: 10 });
+
+    await p1.start();
+    await p2.start();
+    await p3.start();
+    await new Promise(r => setTimeout(r, 200));
+
+    // Full mesh discovery via gossip, including a node announcing 0.0.0.0
+    p2.connect('ws://127.0.0.1:19009');
+    await new Promise(r => setTimeout(r, 400));
+    p3.connect('ws://127.0.0.1:19009');
+    await new Promise(r => setTimeout(r, 1200));
+
+    for (const [name, pn] of [['p1', p1], ['p2', p2], ['p3', p3]] as const) {
+      const count = pn.getPeerCount();
+      assert.ok(count <= 2, `${name} must have at most 2 peers (one per node), got ${count}`);
+      const ids = pn.getConnectedPeers().map(p => p.nodeId).filter(Boolean);
+      assert.ok(!ids.includes(name), `${name} must not be connected to itself`);
+      assert.strictEqual(new Set(ids).size, ids.length, `${name} has duplicate nodeIds: ${ids.join(',')}`);
+    }
+
+    // Gossip still works end-to-end across the mesh
+    const received: any[] = [];
+    p3.on('tx', tx => received.push(tx));
+    p1.sendTransaction({ txId: 'mesh-1', from: 'a', to: 'b', value: 1, nonce: 1, data: { type: 'transfer', data: {} }, signature: 's', publicKey: 'pk' });
+    await new Promise(r => setTimeout(r, 600));
+    assert.ok(received.some(t => t.txId === 'mesh-1'), 'tx gossiped through mesh');
+
+    p1.stop();
+    p2.stop();
+    p3.stop();
+  });
 });

@@ -11,8 +11,28 @@ interface PeerInfo {
   url: string;
   nodeId: string;
   address: string;
+  listenUrl: string; // stable advertised endpoint, e.g. ws://127.0.0.1:5001
   outgoing: boolean;
   lastSeen: number;
+}
+
+/** Canonicalize an announced host so 0.0.0.0/localhost match 127.0.0.1. */
+function canonicalHost(host: string): string {
+  if (!host) return '127.0.0.1';
+  const h = host.trim().toLowerCase();
+  if (h === '0.0.0.0' || h === 'localhost' || h === '::' || h === '[::]' || h === '') return '127.0.0.1';
+  return h;
+}
+
+function listenUrlOf(host: string, port: number | string): string {
+  return `ws://${canonicalHost(host)}:${port}`;
+}
+
+/** Destroy a socket that may still be handshaking; ensures an 'error'
+ *  listener exists so terminate()'s abort error is never unhandled. */
+function rejectSocket(ws: WebSocket): void {
+  ws.on('error', () => {});
+  try { ws.terminate(); } catch (e) {}
 }
 
 export class P2PNetwork extends EventEmitter {
@@ -26,6 +46,27 @@ export class P2PNetwork extends EventEmitter {
     super();
     this.nodeId = nodeId;
     this.config = { ...config, maxPeers: config.maxPeers ?? 50 };
+  }
+
+  /** Every URL that refers to this node's own listener (any host alias). */
+  private ownUrls(): Set<string> {
+    const urls = new Set<string>();
+    for (const h of ['127.0.0.1', 'localhost', '0.0.0.0', this.config.host]) {
+      urls.add(`ws://${canonicalHost(h)}:${this.config.port}`);
+    }
+    return urls;
+  }
+
+  /** True if we already have a live connection to the same node identity
+   *  (same advertised listen URL or same nodeId), excluding `except`. */
+  private hasDuplicate(listenUrl: string, nodeId: string, except?: PeerInfo): boolean {
+    if (nodeId && nodeId === this.nodeId) return true;
+    for (const info of this.peers.values()) {
+      if (info === except) continue;
+      if (info.nodeId && nodeId && info.nodeId === nodeId) return true;
+      if (listenUrl && info.listenUrl === listenUrl) return true;
+    }
+    return false;
   }
 
   async start(): Promise<void> {
@@ -46,7 +87,8 @@ export class P2PNetwork extends EventEmitter {
   }
 
   connect(peerUrl: string): void {
-    if (this.peers.has(peerUrl)) return;
+    if (this.ownUrls().has(`ws://${canonicalHost(this.hostOf(peerUrl))}:${this.portOf(peerUrl)}`)) return;
+    if (this.hasDuplicate(listenUrlOf(this.hostOf(peerUrl), this.portOf(peerUrl)), '')) return;
     if (this.peers.size >= this.config.maxPeers) return;
     try {
       const ws = new WebSocket(peerUrl);
@@ -54,13 +96,22 @@ export class P2PNetwork extends EventEmitter {
     } catch (e) {}
   }
 
-  private addPeer(ws: WebSocket, url: string, outgoing: boolean): void {
-    if (this.peers.has(url)) {
-      ws.close();
-      return;
-    }
+  private hostOf(url: string): string {
+    const m = url.match(/^wss?:\/\/([^:]+)/);
+    return m ? m[1] : url;
+  }
 
-    const info: PeerInfo = { ws, url, nodeId: '', address: '', outgoing, lastSeen: Date.now() };
+  private portOf(url: string): string | number {
+    const m = url.match(/:(\d+)\/?$/);
+    return m ? m[1] : '';
+  }
+
+  private addPeer(ws: WebSocket, url: string, outgoing: boolean): void {
+    const candidateListenUrl = listenUrlOf(this.hostOf(url), this.portOf(url));
+    if (this.ownUrls().has(candidateListenUrl)) { rejectSocket(ws); return; }
+    if (this.peers.has(url)) { rejectSocket(ws); return; }
+
+    const info: PeerInfo = { ws, url, nodeId: '', address: '', listenUrl: '', outgoing, lastSeen: Date.now() };
     this.peers.set(url, info);
 
     ws.on('open', () => {
@@ -70,9 +121,10 @@ export class P2PNetwork extends EventEmitter {
     ws.on('message', (raw) => {
       try {
         const msg: Msg = JSON.parse(raw.toString());
+        if (msg.from && msg.from === this.nodeId) { this.drop(info); return; } // self-loop guard
         this.handleMessage(ws, msg, info);
       } catch (e) {
-        ws.close();
+        ws.terminate();
       }
     });
 
@@ -81,7 +133,13 @@ export class P2PNetwork extends EventEmitter {
       this.emit('peer:disconnect', url);
     });
 
-    ws.on('error', () => ws.close());
+    ws.on('error', () => ws.terminate());
+  }
+
+  /** Remove a peer entry and destroy its socket (used for duplicate/self drops). */
+  private drop(info: PeerInfo): void {
+    if (this.peers.get(info.url) === info) this.peers.delete(info.url);
+    rejectSocket(info.ws);
   }
 
   private send(ws: WebSocket, msg: Msg) {
@@ -103,30 +161,39 @@ export class P2PNetwork extends EventEmitter {
     switch (msg.type) {
       case 'HELLO': {
         const p = msg.payload;
+        // A peer announcing our own nodeId is a self-loop — drop it.
+        if (p.nodeId === this.nodeId) { this.drop(info); return; }
         info.nodeId = p.nodeId;
         info.address = p.address || '';
-        const theirUrl = `ws://${p.host}:${p.port}`;
-        if (theirUrl !== `ws://${this.config.host}:${this.config.port}` && !this.peers.has(theirUrl) && this.peers.size < this.config.maxPeers) {
-          // Connect back if we don't have them
-          if (!info.outgoing) {
-            this.connect(theirUrl);
+        const theirUrl = listenUrlOf(p.host, p.port);
+        info.listenUrl = theirUrl;
+
+        // Drop duplicate connections to the same node (keep the newest socket).
+        if (this.hasDuplicate(theirUrl, p.nodeId, info)) {
+          // If another live entry already represents this node, keep it and drop us.
+          let kept: PeerInfo | null = null;
+          for (const other of this.peers.values()) {
+            if (other !== info && (other.nodeId === p.nodeId || (other.listenUrl && other.listenUrl === theirUrl))) { kept = other; break; }
           }
+          this.drop(info);
+          if (kept) this.send(kept.ws, { type: 'PEER_LIST', payload: this.advertisedUrls(kept), from: this.nodeId, timestamp: Date.now() });
+          return;
         }
-        this.emit('peer:connect', { url: info.url, nodeId: p.nodeId, address: p.address });
+
+        // Connect back for incoming connections when we don't yet have them
+        if (!info.outgoing && !this.hasDuplicate(theirUrl, '', info) && this.peers.size < this.config.maxPeers) {
+          this.connect(theirUrl);
+        }
+        this.emit('peer:connect', { url: theirUrl, nodeId: p.nodeId, address: p.address });
         // Share our peers
-        const peerUrls = Array.from(this.peers.values())
-          .filter(pi => pi.url !== info.url && pi.url !== `ws://${this.config.host}:${this.config.port}`)
-          .map(pi => pi.url)
-          .slice(0, 20);
-        this.send(ws, { type: 'PEER_LIST', payload: peerUrls, from: this.nodeId, timestamp: Date.now() });
+        this.send(ws, { type: 'PEER_LIST', payload: this.advertisedUrls(info), from: this.nodeId, timestamp: Date.now() });
         break;
       }
 
       case 'PEER_LIST': {
         for (const p of msg.payload || []) {
-          if (!this.peers.has(p) && p !== `ws://${this.config.host}:${this.config.port}`) {
-            this.connect(p);
-          }
+          const u = listenUrlOf(this.hostOf(p), this.portOf(p));
+          if (!this.ownUrls().has(u)) this.connect(u);
         }
         break;
       }
@@ -179,8 +246,24 @@ export class P2PNetwork extends EventEmitter {
     }
   }
 
+  /** Stable listen URLs of connected peers to advertise, excluding the
+   *  recipient and ourselves; falls back to connection URL until HELLO. */
+  private advertisedUrls(exclude: PeerInfo): string[] {
+    const own = this.ownUrls();
+    const urls = new Set<string>();
+    for (const pi of this.peers.values()) {
+      if (pi === exclude) continue;
+      const u = pi.listenUrl || listenUrlOf(this.hostOf(pi.url), this.portOf(pi.url));
+      if (own.has(u)) continue;
+      if (u === exclude.listenUrl) continue;
+      if (!u || u.endsWith(':')) continue;
+      urls.add(u);
+    }
+    return Array.from(urls).slice(0, 20);
+  }
+
   getConnectedPeers(): { url: string; nodeId: string; address: string }[] {
-    return Array.from(this.peers.values()).map(p => ({ url: p.url, nodeId: p.nodeId, address: p.address }));
+    return Array.from(this.peers.values()).map(p => ({ url: p.listenUrl || p.url, nodeId: p.nodeId, address: p.address }));
   }
 
   getPeerCount(): number {
