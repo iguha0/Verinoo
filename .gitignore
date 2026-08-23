@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Runtime data (node databases, keys)
+data/
+key.json
+
+# Generated ZK artifacts (regenerate: node scripts/setup-groth16.mjs)
+circuits/build/
+
+# Test run artifacts
+test_*_tmp/
+test_live_net/
+*.log
+
+# OS
+.DS_Store
