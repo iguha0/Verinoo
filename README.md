@@ -29,7 +29,7 @@ open http://localhost:3003/dashboard
 
 - **Multi-node blockchain** with P2P gossip, block sync, Ed25519 signatures, and deterministic genesis
 - **Real WASM inference** — Q16.16 fixed-point matmul, ReLU, layer norm, softmax (zero floating-point)
-- **Groth16 zkSNARKs** — Circom circuit proving knowledge of honest inference without revealing weights
+- **Groth16 zkSNARKs** — Circom circuits proving honest layer execution without revealing weights (4×4 matmul + ReLU + argmax)
 - **Live dashboard** — auto-polling block explorer + peer health + model registry
 - **Verification games** — on-chain bisection protocol resolving AI inference disputes
 
@@ -40,7 +40,7 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full technical breakdown of eve
 ## Test Results
 
 ```
-66 tests across 15 suites — all passing
+73 tests across 16 suites — all passing
 ```
 
 | Layer | Tests | Status |
@@ -52,6 +52,7 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full technical breakdown of eve
 | P2P | 4 | ✅ |
 | WASM Runtime | 7 | ✅ |
 | ZK Circuit | 7 | ✅ |
+| Op Circuits (relu8/argmax8) | 7 | ✅ |
 | ZK Index | 10 | ✅ |
 | Groth16 SNARK | 3 | ✅ |
 | API Security | 4 | ✅ |
@@ -71,6 +72,12 @@ node scripts/build-wasm.mjs
 
 # Regenerate Groth16 trusted setup (if zklayer.circom changes)
 node scripts/setup-groth16.mjs
+
+# Build op-level circuits (relu8, argmax8) — requires circom 2.x (or CIRCOM_BIN)
+npm run build:ops
+
+# ZK scaling benchmarks (writes docs/ZK_BENCHMARKS.md)
+npm run bench:zk
 ```
 
 ## License
