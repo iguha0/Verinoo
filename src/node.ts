@@ -112,7 +112,10 @@ export class AINativeNode extends EventEmitter {
     });
 
     await this.p2p.start();
-    this.apiServer = createApiServer(this.engine, this.p2p, this.config.name, this.config.apiPort);
+    this.apiServer = createApiServer(this.engine, this.p2p, this.config.name, this.config.apiPort, {
+      apiToken: this.config.apiToken ?? process.env.AIN_API_TOKEN,
+      rateLimitPerMinute: this.config.rateLimitPerMinute,
+    });
 
     for (const peer of this.config.peers) this.p2p.connect(peer);
 

@@ -13,6 +13,7 @@ program.command('start')
   .option('--host <host>', 'host', '0.0.0.0')
   .option('--peers <list>', 'comma-separated peer URLs')
   .option('--validator', 'produce blocks', false)
+  .option('--api-token <token>', 'require this token for mutating API calls (or set AIN_API_TOKEN)')
   .action(async (opts) => {
     const node = new AINativeNode({
       name: opts.name,
@@ -22,6 +23,7 @@ program.command('start')
       apiPort: parseInt(opts.port),
       peers: opts.peers ? opts.peers.split(',').filter(Boolean) : [],
       validator: !!opts.validator,
+      apiToken: opts.apiToken || process.env.AIN_API_TOKEN || undefined,
     });
     let shuttingDown = false;
     process.on('SIGINT', () => {
