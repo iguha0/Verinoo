@@ -10,9 +10,9 @@
  *     in the BN254 scalar field
  */
 
-import { readFileSync } from 'fs';
-import { existsSync } from 'fs';
+import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
+import { groth16Prove } from './prover';
 
 const FIXED_ONE = 65536;
 const BN254_PRIME = BigInt('21888242871839275222246405745257275088548364400416034343698204186575808495617');
@@ -70,18 +70,13 @@ export interface OpProofOutput {
 
 export async function proveRelu(xFloats: number[]): Promise<OpProofOutput> {
   if (xFloats.length !== 8) throw new Error('relu8 circuit expects exactly 8 elements');
-  const snarkjs = await import('snarkjs');
   const art = artifacts('relu8');
 
   const x = xFloats.map(f2i);
   const out = honestRelu(x);
   const commitment = sumSquares([...x, ...out]);
 
-  const { proof, publicSignals } = await snarkjs.groth16.fullProve(
-    { commitment, x, out },
-    art.wasm,
-    art.zkey
-  );
+  const { proof, publicSignals } = await groth16Prove({ commitment, x, out }, art.wasm, art.zkey);
   return { proof, publicSignals, outputFixed: out };
 }
 
@@ -105,7 +100,6 @@ export function honestArgmax(xFixed: number[]): number {
 
 export async function proveArgmax(xFloats: number[]): Promise<OpProofOutput & { index: number }> {
   if (xFloats.length !== 8) throw new Error('argmax8 circuit expects exactly 8 elements');
-  const snarkjs = await import('snarkjs');
   const art = artifacts('argmax8');
 
   const x = xFloats.map(f2i);
@@ -113,11 +107,7 @@ export async function proveArgmax(xFloats: number[]): Promise<OpProofOutput & { 
   const maxVal = x[idx];
   const commitment = sumSquares(x);
 
-  const { proof, publicSignals } = await snarkjs.groth16.fullProve(
-    { commitment, idx, maxVal, x },
-    art.wasm,
-    art.zkey
-  );
+  const { proof, publicSignals } = await groth16Prove({ commitment, idx, maxVal, x }, art.wasm, art.zkey);
   return { proof, publicSignals, outputFixed: [maxVal], index: idx };
 }
 

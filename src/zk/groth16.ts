@@ -78,7 +78,7 @@ export async function proveLayer(
   _output: number[],
   bias: number[]
 ): Promise<ProofOutput> {
-  const snarkjs = await import('snarkjs');
+  const { groth16Prove } = await import('./prover');
 
   const inpFx = input.map(floatToFixed);
   const wFx = weights.map(floatToFixed);
@@ -87,7 +87,7 @@ export async function proveLayer(
 
   const publicCommitment = computeCommitmentHash(honestFx);
 
-  const { proof, publicSignals } = await snarkjs.groth16.fullProve(
+  const { proof, publicSignals } = await groth16Prove(
     {
       publicCommitment,
       inp: inpFx,

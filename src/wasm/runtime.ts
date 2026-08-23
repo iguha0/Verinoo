@@ -188,6 +188,13 @@ export class WasmRuntime {
         return vector2Float(readI32Array(this.wasm, inAddr, len));
       }
 
+      case 'softmax': {
+        const len = input.length;
+        const inAddr = this.allocVector(input);
+        this.wasm.softmax(len, inAddr);
+        return vector2Float(readI32Array(this.wasm, inAddr, len));
+      }
+
       case 'layernorm': {
         const len = input.length;
         const inAddr = this.allocVector(input);

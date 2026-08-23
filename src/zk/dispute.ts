@@ -14,6 +14,7 @@
 
 import { verifyRelu } from './groth16ops';
 import { verifyLayernorm } from './groth16layernorm';
+import { verifySoftmax } from './groth16softmax';
 import { verifyLayer } from './groth16';
 
 const BN254_PRIME = BigInt('21888242871839275222246405745257275088548364400416034343698204186575808495617');
@@ -24,7 +25,7 @@ function sumSquares(vals: number[]): string {
   return sum.toString();
 }
 
-export type DisputeProofType = 'relu8' | 'layernorm8' | 'matmul4x4';
+export type DisputeProofType = 'relu8' | 'layernorm8' | 'softmax8' | 'matmul4x4';
 
 export interface DisputeSnark {
   proofType: DisputeProofType;
@@ -50,6 +51,12 @@ export async function verifyDisputeSnark(
         const expected = sumSquares([...inputFixed, ...claimedOutputFixed]);
         if (sn.publicSignals[0] !== expected) return false;
         return await verifyLayernorm(sn.proof, sn.publicSignals);
+      }
+      case 'softmax8': {
+        if (!inputFixed || inputFixed.length !== 8) return false;
+        const expected = sumSquares([...inputFixed, ...claimedOutputFixed]);
+        if (sn.publicSignals[0] !== expected) return false;
+        return await verifySoftmax(sn.proof, sn.publicSignals);
       }
       case 'matmul4x4': {
         // slim matmul circuit commits outputs only

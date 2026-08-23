@@ -80,8 +80,15 @@ Measured constraint model for the matmul circuit: `c(N) = 2N² + 3N`.
 | ✅ slim matmul commitment (shipped) | c(N) = N² + N — 2× cheaper proofs | 20 @ 4×4 |
 | ✅ sampled-policy gas pricing + proveStep SNARK fast path (shipped) | disputes resolve without recompute | — |
 | ✅ 64×64 matmul measured (shipped) | real embedding blocks | 4160, 735 ms (pot14) |
-| Then: layernorm via integer sqrt (Newton iter, fixed rounds) | normalization ops | ~40 per element |
-| Then: softmax via exp LUT + range checks (lookup args / PSE) | attention | research-grade |
+| ✅ layernorm8 (shipped) | integer sqrt via bounds witness + reciprocal proofs | 376 |
+| ✅ softmax8 (shipped) | hard-max-with-margin rule mirroring WAT; equality-indicator design, no signed-bit tricks | 552 |
+| ✅ Prover abstraction (shipped) | snarkjs default; rapidsnark CLI via AIN_RAPIDSNARK_BIN (~50-100x); gnark = Go sidecar path | — |
+
+Note on softmax/exp: the decision resolved itself — inference.wat never
+computed a real exp ("exact softmax is not critical; determinism is").
+The circuit mirrors the actual integer rule. If true exp is ever wanted,
+the equality-indicator + dominance patterns here extend to LUT membership
+(lookup arguments) without restructuring.
 
 Softmax and layernorm need range checks and division/sqrt — the standard
 zkML toolkit is lookup arguments and polynomial approximation with fixed

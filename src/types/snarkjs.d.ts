@@ -3,4 +3,7 @@ declare module 'snarkjs' {
     fullProve: (input: any, wasmFile: string, zkeyFile: string) => Promise<{ proof: any; publicSignals: string[] }>;
     verify: (vkey: any, publicSignals: string[], proof: any) => Promise<boolean>;
   };
+  export const wtns: {
+    calculate: (input: any, wasmFile: string, outputFile: string) => Promise<void>;
+  };
 }

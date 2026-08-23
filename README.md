@@ -29,7 +29,7 @@ open http://localhost:3003/dashboard
 
 - **Multi-node blockchain** with P2P gossip, block sync, Ed25519 signatures, and deterministic genesis
 - **Real WASM inference** — Q16.16 fixed-point matmul, ReLU, layer norm, softmax (zero floating-point)
-- **Groth16 zkSNARKs** — Circom circuits proving honest layer execution without revealing weights (4×4 matmul + ReLU + argmax + layernorm)
+- **Groth16 zkSNARKs** — Circom circuits proving honest layer execution without revealing weights (4×4 matmul + ReLU + argmax + layernorm + softmax)
 - **Live dashboard** — auto-polling block explorer + peer health + model registry
 - **Verification games** — on-chain bisection protocol resolving AI inference disputes
 
@@ -40,7 +40,7 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full technical breakdown of eve
 ## Test Results
 
 ```
-87 tests across 18 suites — all passing
+98 tests across 19 suites — all passing
 ```
 
 | Layer | Tests | Status |
@@ -55,6 +55,7 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full technical breakdown of eve
 | Op Circuits (relu8/argmax8) | 7 | ✅ |
 | Layernorm Circuit | 10 | ✅ |
 | Policy + SNARK Fast Path | 4 | ✅ |
+| Softmax Circuit | 11 | ✅ |
 | ZK Index | 10 | ✅ |
 | Groth16 SNARK | 3 | ✅ |
 | API Security | 4 | ✅ |
