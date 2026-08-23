@@ -76,7 +76,10 @@ Measured constraint model for the matmul circuit: `c(N) = 2N² + 3N`.
 |---|---|---|
 | ✅ 4×4 matmul (shipped) | toy demo | 44 |
 | ✅ relu8 / argmax8 (shipped) | non-linear ops | 280 each |
-| Next: 64×64 matmul | real embedding blocks | ~8.4k (pot14 needed) |
+| ✅ layernorm8 (shipped) | integer sqrt + reciprocal, bounds-proven | 376 |
+| ✅ slim matmul commitment (shipped) | c(N) = N² + N — 2× cheaper proofs | 20 @ 4×4 |
+| ✅ sampled-policy gas pricing + proveStep SNARK fast path (shipped) | disputes resolve without recompute | — |
+| ✅ 64×64 matmul measured (shipped) | real embedding blocks | 4160, 735 ms (pot14) |
 | Then: layernorm via integer sqrt (Newton iter, fixed rounds) | normalization ops | ~40 per element |
 | Then: softmax via exp LUT + range checks (lookup args / PSE) | attention | research-grade |
 

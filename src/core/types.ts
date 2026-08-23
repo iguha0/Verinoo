@@ -153,7 +153,7 @@ export interface VerificationGame {
 export interface LayerSpec {
   index: number;
   name: string;                    // e.g., "embedding", "attn_0", "ffn_0", "head_norm"
-  opType: 'embedding' | 'attention' | 'ffn' | 'layernorm' | 'head';
+  opType: 'embedding' | 'attention' | 'ffn' | 'layernorm' | 'head' | 'relu';
   inputShape: number[];             // for trace validation
   outputShape: number[];            // for trace validation
   tolerance: number;                // allowed cosine distance for "match" (e.g., 0.001)

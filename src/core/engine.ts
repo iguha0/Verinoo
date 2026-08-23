@@ -4,7 +4,8 @@ import { Block, BlockHeader, Transaction, InferenceTask, ComputeNode, AgentAccou
 import { signMessage, sha256, verifySignature, publicKeyToAddress } from '../wallet/crypto';
 import { getLayerSpec as zkGetLayerSpec } from '../zk';
 import { loadWasmSync, WasmRuntime } from '../wasm/runtime';
-import { gasCostFor, gasUsedOf, computeBaseFee, INITIAL_BASE_FEE, blockGasLimit } from './gas';
+import { gasCostFor, gasUsedOf, computeBaseFee, INITIAL_BASE_FEE, blockGasLimit, policyMultiplier, policyOf, isValidPolicy, VerificationPolicy } from './gas';
+import { verifyDisputeSnark, DisputeSnark } from '../zk/dispute';
 
 function merkleRoot(hashes: string[]): string {
   if (hashes.length === 0) return sha256('empty-merkle');
@@ -77,7 +78,13 @@ export class AINativeEngine {
     const acc = this.store.getAccount(tx.from);
     if (acc && tx.nonce !== acc.nonce + 1) return `bad nonce (have ${acc.nonce})`;
     const bal = acc?.balance ?? 0;
-    const maxFee = gasCostFor(tx) * this.nextBaseFee();
+    const pol = policyOf(tx);
+    if (tx.data?.type === 'submitInference') {
+      const declared = (tx.data.data as any)?.verificationType;
+      if (declared !== undefined && !isValidPolicy(declared)) return `invalid verificationType: ${declared}`;
+    }
+    const multiplier = pol ? policyMultiplier(pol) : 1;
+    const maxFee = gasCostFor(tx) * this.nextBaseFee() * multiplier;
     if (bal < tx.value + maxFee) return 'insufficient balance for value + gas';
     return true;
   }
@@ -89,8 +96,9 @@ export class AINativeEngine {
    * remote blocks reach byte-identical account state. The fee is split
    * 25% burned to treasury / 75% credited to the block's validator.
    */
-  executeTransaction(tx: Transaction, height: number, validatorAddress?: string): void {
-    const fee = gasCostFor(tx) * this.baseFeeAt(height);
+  async executeTransaction(tx: Transaction, height: number, validatorAddress?: string): Promise<void> {
+    const policy = policyOf(tx);
+    const fee = gasCostFor(tx) * this.baseFeeAt(height) * (policy ? policyMultiplier(policy) : 1);
 
     const acc = this.store.getAccount(tx.from) || {
       address: tx.from, publicKey: tx.publicKey, nonce: 0, balance: 0, updatedAt: 0
@@ -133,7 +141,8 @@ export class AINativeEngine {
       case 'submitInference': {
         const data = d.data as any;
         const taskId = sha256(JSON.stringify(data) + tx.txId).substring(0, 32);
-        this.store.setTask({ ...data, taskId, status: 'pending' });
+        const verificationType: VerificationPolicy = policy ? policy : 'optimistic';
+        this.store.setTask({ ...data, taskId, status: 'pending', verificationType });
         break;
       }
       case 'claimTask': {
@@ -264,22 +273,36 @@ export class AINativeEngine {
         break;
       }
       case 'proveStep': {
-        const { gameId, layerWeights, layerInput, layerBias, layerOutput, actualTraceRoot } = d.data as any;
+        const { gameId, layerWeights, layerInput, layerBias, layerOutput, actualTraceRoot, snark } = d.data as any;
         const existingGame = this.store.getGame(gameId) as VerificationGame | undefined;
         if (!existingGame) throw new Error('game not found');
         if (existingGame.status !== 'proving') throw new Error('not at proving stage');
         if (tx.from !== existingGame.defender) throw new Error('only defender can prove');
         if (height > existingGame.lastMoveAt + existingGame.moveTimeout) throw new Error('prove timeout');
-        
+
         const layerIdx = existingGame.disputedLayer;
         const spec = existingGame.layerSpec[layerIdx];
         if (!spec) throw new Error('invalid disputed layer');
 
-        // WASM deterministically recomputes the disputed layer output.
-        // The defender's claimed output must match the honest WASM execution exactly.
-        const runtime = new WasmRuntime(loadWasmSync());
-        const recomputedOutput = runtime.executeLayer(spec.opType, layerWeights, layerInput, layerBias);
-        const isValid = JSON.stringify(recomputedOutput) === JSON.stringify(layerOutput);
+        let isValid: boolean;
+        if (snark && snark.proofType && snark.proof && Array.isArray(snark.publicSignals)) {
+          // Fast path: a genuine SNARK bound to the claimed output resolves
+          // the dispute without re-execution. Anything invalid falls through
+          // to deterministic WASM checking, so forgery can never win.
+          const inputFixed = (layerInput as number[]).map(v => Math.round(v * 65536));
+          const outFixed = (layerOutput as number[]).map(v => Math.round(v * 65536));
+          isValid = await verifyDisputeSnark(snark as DisputeSnark, outFixed, inputFixed);
+        } else {
+          isValid = false;
+        }
+
+        if (!isValid) {
+          // Deterministic WASM recomputation of the disputed layer output.
+          // The defender's claimed output must match the honest execution exactly.
+          const runtime = new WasmRuntime(loadWasmSync());
+          const recomputedOutput = runtime.executeLayer(spec.opType, layerWeights, layerInput, layerBias);
+          isValid = JSON.stringify(recomputedOutput) === JSON.stringify(layerOutput);
+        }
         
         const game = { ...existingGame };
         
@@ -373,7 +396,7 @@ export class AINativeEngine {
     }
   }
 
-  produceBlock(txs: Transaction[], validator: { address: string; publicKey: string; privateKey: string }): Block {
+  async produceBlock(txs: Transaction[], validator: { address: string; publicKey: string; privateKey: string }): Promise<Block> {
     const prev = this.store.getLatestBlock()!;
     const height = prev.header.index + 1;
     const executed: Transaction[] = [];
@@ -385,7 +408,7 @@ export class AINativeEngine {
         try {
           // Mandatory gas fee is applied inside executeTransaction so that
           // peers mirroring this block compute identical account state.
-          this.executeTransaction(tx, height, validator.address);
+          await this.executeTransaction(tx, height, validator.address);
           executed.push(tx);
           gasLeft -= cost;
         }

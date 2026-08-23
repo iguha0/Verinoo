@@ -53,7 +53,7 @@ export class AINativeNode extends EventEmitter {
       }
     });
 
-    this.p2p.on('block', (block: Block, source: string) => {
+    this.p2p.on('block', async (block: Block, source: string) => {
       const latest = this.engine.getLatestBlock();
       if (!latest) return;
       if (block.header.validator === this.keyPair.address) return;
@@ -73,7 +73,7 @@ export class AINativeNode extends EventEmitter {
         }
         for (const b of plan.blocksToApply) {
           for (const tx of b.transactions) {
-            try { this.engine.executeTransaction(tx, b.header.index, b.header.validator); } catch (e) {}
+            try { await this.engine.executeTransaction(tx, b.header.index, b.header.validator); } catch (e) {}
           }
           console.log(`[sync] Apply #${b.header.index}`);
         }
@@ -85,18 +85,18 @@ export class AINativeNode extends EventEmitter {
         // Normal forward block
         console.log(`[sync] block #${block.header.index} from ${source || 'peer'}`);
         for (const tx of block.transactions) {
-          try { this.engine.executeTransaction(tx, block.header.index, block.header.validator); } catch (e) {}
+          try { await this.engine.executeTransaction(tx, block.header.index, block.header.validator); } catch (e) {}
         }
       } else if (newHead.header.hash !== latest.header.hash && newHead.header.hash === block.header.hash) {
         console.log(`[sync] competing at #${block.header.index} — current chain heavier`);
       }
     });
 
-    this.p2p.on('blockResponse', (block: Block) => {
+    this.p2p.on('blockResponse', async (block: Block) => {
       const latest = this.engine.getLatestBlock();
       if (latest && block.header.index === latest.header.index + 1 && block.header.previousHash === latest.header.hash) {
         for (const tx of block.transactions) {
-          try { this.engine.executeTransaction(tx, block.header.index, block.header.validator); } catch (e) {}
+          try { await this.engine.executeTransaction(tx, block.header.index, block.header.validator); } catch (e) {}
         }
         this.store.saveBlock(block);
         console.log(`[sync] fetched #${block.header.index}`);
@@ -130,8 +130,10 @@ export class AINativeNode extends EventEmitter {
     if (this.config.validator) {
       this.timers.push(setInterval(() => {
         const txs = this.mempool.splice(0, Math.min(100, this.mempool.length));
-        const block = this.engine.produceBlock(txs, { address: this.keyPair.address, publicKey: this.keyPair.publicKey, privateKey: this.keyPair.privateKey });
-        this.p2p.sendBlock(block);
+        this.engine
+          .produceBlock(txs, { address: this.keyPair.address, publicKey: this.keyPair.publicKey, privateKey: this.keyPair.privateKey })
+          .then(block => this.p2p.sendBlock(block))
+          .catch(e => console.log(`[block] production failed: ${e.message}`));
       }, 10000));
     }
 

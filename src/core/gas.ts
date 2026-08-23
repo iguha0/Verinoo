@@ -37,6 +37,32 @@ export function blockGasLimit(): number {
 
 /** baseFee applied to the genesis block; protocol constant. */
 export const INITIAL_BASE_FEE = 1;
+
+// === Verification policy pricing ===
+
+/** Per-task verification policy. Stronger verification costs more gas. */
+export type VerificationPolicy = 'optimistic' | 'sampled' | 'full-zk';
+
+const POLICY_MULTIPLIER: Record<VerificationPolicy, number> = {
+  optimistic: 1,
+  sampled: 2,
+  'full-zk': 4,
+};
+
+export function isValidPolicy(p: unknown): p is VerificationPolicy {
+  return typeof p === 'string' && p in POLICY_MULTIPLIER;
+}
+
+export function policyMultiplier(p: VerificationPolicy): number {
+  return POLICY_MULTIPLIER[p];
+}
+
+/** Extract the policy a transaction carries, if any (submitInference only). */
+export function policyOf(tx: Transaction): VerificationPolicy | undefined {
+  if (tx.data?.type !== 'submitInference') return undefined;
+  const p = (tx.data.data as any)?.verificationType;
+  return isValidPolicy(p) ? p : undefined;
+}
 const BASE_FEE_DENOM = 8; // EIP-1559 elasticity
 const MAX_BASE_FEE_CHANGE = 12.5; // max +/- 12.5%
 

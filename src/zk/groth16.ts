@@ -112,14 +112,22 @@ export async function verifyLayer(
   return snarkjs.groth16.verify(vkey, publicSignals, proof);
 }
 
-/** Batch compute commitment hashes for all witnesses (used in circuit.ts). */
+/** Batch compute commitment hashes for all witnesses (used in circuit.ts).
+ *  Legacy all-values sum-of-squares, independent of the slim circuit's
+ *  output-only public commitment. */
 export function computeTraceCommitmentHash(
   input: number[],
   weights: number[],
   output: number[],
   bias: number[]
 ): string {
-  return computeCommitmentHash(input, weights, output, bias);
+  const all = [...input, ...weights, ...output, ...bias].map(floatToFixed);
+  let sum = BigInt(0);
+  for (const v of all) {
+    const fv = BigInt(v);
+    sum = (sum + fv * fv) % BN254_PRIME;
+  }
+  return sum.toString();
 }
 
 /** Terminate the BN254 curve worker pool cached by ffjavascript/snarkjs.

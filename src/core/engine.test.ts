@@ -1,4 +1,4 @@
-import { test, describe } from 'node:test';
+import { test, describe, after } from 'node:test';
 import assert from 'node:assert';
 import { AINativeEngine } from './engine';
 import { BlockStore } from '../storage';
@@ -6,6 +6,8 @@ import { rmSync } from 'fs';
 import { signMessage, generateKeyPair } from '../wallet/crypto';
 import { deriveLayerWeights } from '../zk/circuit';
 import { loadWasmSync, WasmRuntime } from '../wasm/runtime';
+import { proveRelu } from '../zk/groth16ops';
+import { terminateZkWorkers } from '../zk/groth16';
 
 function makeTx(from: any, to: string, value: number, type: string, data: any, nonce: number) {
   const crypto = require('crypto');
@@ -17,6 +19,8 @@ function makeTx(from: any, to: string, value: number, type: string, data: any, n
 
 describe('AINativeEngine', () => {
   const TEST_DIR = './test_chain_tmp';
+
+  after(async () => { await terminateZkWorkers(); });
 
   function freshEngine() {
     try { rmSync(TEST_DIR, { recursive: true }); } catch {}
@@ -64,7 +68,7 @@ describe('AINativeEngine', () => {
     assert.ok(typeof val === 'string' && val.includes('balance'), 'insufficient balance detected');
   });
 
-  test('full task lifecycle: submit -> match -> result -> challenge -> bisect -> resolve', () => {
+  test('full task lifecycle: submit -> match -> result -> challenge -> bisect -> resolve', async () => {
     const engine = freshEngine();
     const treasury = generateKeyPair();
     const user = generateKeyPair();
@@ -78,7 +82,7 @@ describe('AINativeEngine', () => {
     engine.store.setAccount({ address: challenger.address, publicKey: challenger.publicKey, nonce: 0, balance: 500, updatedAt: 0 });
 
     // Register model — Tiny-Test-Net uses 4-element vectors for WASM compatibility
-    engine.produceBlock([makeTx(treasury, '', 0, 'registerModel', {
+    await engine.produceBlock([makeTx(treasury, '', 0, 'registerModel', {
       architecture: 'Tiny-Test-Net', parameterCount: 256,
       weightsHash: 'w_' + 'a'.repeat(32), runtimeHash: 'r_' + 'b'.repeat(32),
       stakingRequirement: 50, description: 'WASM-compatible test model',
@@ -87,7 +91,7 @@ describe('AINativeEngine', () => {
     assert.ok(modelId, 'model registered');
 
     // Register node
-    engine.produceBlock([makeTx(node, '', 0, 'registerNode', {
+    await engine.produceBlock([makeTx(node, '', 0, 'registerNode', {
       stakedAmount: 800, availableCapacity: 4, maxCapacity: 4,
       activeTasks: 0, reputation: 75, successfulInferences: 0, failedInferences: 0,
       supportedModels: [modelId],
@@ -95,7 +99,7 @@ describe('AINativeEngine', () => {
     assert.strictEqual(engine.getNode(node.address)?.reputation, 75);
 
     // Submit inference (auto-matched in block production)
-    engine.produceBlock([makeTx(user, '', 100, 'submitInference', {
+    await engine.produceBlock([makeTx(user, '', 100, 'submitInference', {
       requester: user.address, targetModel: modelId,
       inputCommitment: 'inp_test_commitment',
       maxFee: 100, deadline: 1000, verificationType: 'optimistic',
@@ -106,7 +110,7 @@ describe('AINativeEngine', () => {
     assert.strictEqual(task!.assignedTo, node.address);
     
     // Submit result
-    engine.produceBlock([makeTx(node, '', 0, 'submitResult', {
+    await engine.produceBlock([makeTx(node, '', 0, 'submitResult', {
       taskId: task!.taskId,
       resultHash: 'res_correct_hash',
       resultOutput: 'The patient shows elevated troponin levels.',
@@ -118,7 +122,7 @@ describe('AINativeEngine', () => {
     assert.ok(completedTask?.challengeWindowEnd! > 0, 'challenge window set');
 
     // Open challenge
-    engine.produceBlock([makeTx(challenger, '', 0, 'challengeResult', {
+    await engine.produceBlock([makeTx(challenger, '', 0, 'challengeResult', {
       taskId: task!.taskId,
       reason: 'Fraud!',
     }, 1)], treasury);
@@ -135,12 +139,12 @@ describe('AINativeEngine', () => {
     assert.strictEqual(game!.defender, node.address);
 
     // Bisection round 1 — challenger
-    engine.produceBlock([makeTx(challenger, '', 0, 'bisect', {
+    await engine.produceBlock([makeTx(challenger, '', 0, 'bisect', {
       gameId, layerIndex: 2, traceRoot: 'trace_ch_2',
     }, 2)], treasury);
     
     // Bisection round 1 — defender (DIFFERENT)
-    engine.produceBlock([makeTx(node, '', 0, 'bisect', {
+    await engine.produceBlock([makeTx(node, '', 0, 'bisect', {
       gameId, layerIndex: 2, traceRoot: 'trace_df_2_DIFFERENT',
     }, 3)], treasury);
 
@@ -149,12 +153,12 @@ describe('AINativeEngine', () => {
     assert.strictEqual(gameMid!.disputedLayer, 2, 'disputed layer set');
 
     // Bisection round 2 — challenger at layer 1
-    engine.produceBlock([makeTx(challenger, '', 0, 'bisect', {
+    await engine.produceBlock([makeTx(challenger, '', 0, 'bisect', {
       gameId, layerIndex: 1, traceRoot: 'trace_ch_1',
     }, 3)], treasury);
 
     // Defender AGREES at layer 1
-    engine.produceBlock([makeTx(node, '', 0, 'bisect', {
+    await engine.produceBlock([makeTx(node, '', 0, 'bisect', {
       gameId, layerIndex: 1, traceRoot: 'trace_ch_1', // same!
     }, 4)], treasury);
 
@@ -170,7 +174,7 @@ describe('AINativeEngine', () => {
     );
 
     // Prove step — defender wins with WASM-verified honest output
-    engine.produceBlock([makeTx(node, '', 0, 'proveStep', {
+    await engine.produceBlock([makeTx(node, '', 0, 'proveStep', {
       gameId,
       layerWeights: lw.weights,
       layerInput,
@@ -187,7 +191,7 @@ describe('AINativeEngine', () => {
     assert.ok(finalNode!.reputation > 75, 'reputation recovered + bonus');
   });
 
-  test('timeout: challenger forfeit', () => {
+  test('timeout: challenger forfeit', async () => {
     const engine = freshEngine();
     const treasury = generateKeyPair();
     const user = generateKeyPair();
@@ -199,28 +203,28 @@ describe('AINativeEngine', () => {
     engine.store.setAccount({ address: node.address, publicKey: node.publicKey, nonce: 0, balance: 1000, updatedAt: 0 });
     engine.store.setAccount({ address: challenger.address, publicKey: challenger.publicKey, nonce: 0, balance: 500, updatedAt: 0 });
 
-    engine.produceBlock([makeTx(treasury, '', 0, 'registerModel', {
+    await engine.produceBlock([makeTx(treasury, '', 0, 'registerModel', {
       architecture: 'Tiny-Test-Net', parameterCount: 256,
       weightsHash: 'w_test', runtimeHash: 'r_test', stakingRequirement: 50, description: 'Test',
     }, 1)], treasury);
     const modelId = engine.store.getModels()[0].modelId;
 
-    engine.produceBlock([makeTx(node, '', 0, 'registerNode', {
+    await engine.produceBlock([makeTx(node, '', 0, 'registerNode', {
       stakedAmount: 800, availableCapacity: 4, maxCapacity: 4,
       activeTasks: 0, reputation: 75, supportedModels: [modelId],
     }, 1)], treasury);
 
-    engine.produceBlock([makeTx(user, '', 100, 'submitInference', {
+    await engine.produceBlock([makeTx(user, '', 100, 'submitInference', {
       requester: user.address, targetModel: modelId,
       inputCommitment: 'inp_test', maxFee: 100, deadline: 1000, verificationType: 'optimistic',
     }, 1)], treasury);
     const task = engine.store.getTasksByStatus('assigned')[0];
 
-    engine.produceBlock([makeTx(node, '', 0, 'submitResult', {
+    await engine.produceBlock([makeTx(node, '', 0, 'submitResult', {
       taskId: task!.taskId, resultHash: 'res_hash', resultOutput: 'output',
     }, 2)], treasury);
 
-    engine.produceBlock([makeTx(challenger, '', 0, 'challengeResult', {
+    await engine.produceBlock([makeTx(challenger, '', 0, 'challengeResult', {
       taskId: task!.taskId, reason: 'Timeout test',
     }, 1)], treasury);
     
@@ -230,7 +234,7 @@ describe('AINativeEngine', () => {
     // Time out the game by fast-forwarding many blocks
     let currentHeight = 6;
     for (let i = 0; i < 10; i++) {
-      engine.produceBlock([], treasury);
+      await engine.produceBlock([], treasury);
       currentHeight++;
     }
 
@@ -244,14 +248,14 @@ describe('AINativeEngine', () => {
     // Execution will fail due to timeout check inside
     let threw = false;
     try {
-      engine.executeTransaction(timeoutTx, currentHeight);
+      await engine.executeTransaction(timeoutTx, currentHeight);
     } catch (e) {
       threw = true;
     }
     assert.ok(threw, 'timed out bisection rejected');
   });
 
-  test('mandatory gas: fee debited from sender, split validator/treasury', () => {
+  test('mandatory gas: fee debited from sender, split validator/treasury', async () => {
     const engine = freshEngine();
     const kp = generateKeyPair();
     const val = generateKeyPair();
@@ -259,7 +263,7 @@ describe('AINativeEngine', () => {
     engine.store.setAccount({ address: val.address, publicKey: val.publicKey, nonce: 0, balance: 0, updatedAt: 0 });
 
     const tx = makeTx(kp, 'recipient', 10, 'transfer', {}, 1);
-    engine.produceBlock([tx], { address: val.address, publicKey: val.publicKey, privateKey: val.privateKey });
+    await engine.produceBlock([tx], { address: val.address, publicKey: val.publicKey, privateKey: val.privateKey });
 
     // transfer costs gasCostFor=50 * baseFee=1
     assert.strictEqual(engine.getAccount(kp.address)?.balance, 1000 - 10 - 50);
@@ -279,23 +283,180 @@ describe('AINativeEngine', () => {
     assert.ok(typeof res === 'string' && res.includes('gas'), 'value+gas check enforced');
   });
 
-  test('baseFee deterministic across independent engines replaying same chain', () => {
-    const mkChain = () => {
+  test('baseFee deterministic across independent engines replaying same chain', async () => {
+    const mkChain = async () => {
       const engine = freshEngine();
       const kp = generateKeyPair();
       const val = generateKeyPair();
       engine.store.setAccount({ address: kp.address, publicKey: kp.publicKey, nonce: 0, balance: 100000, updatedAt: 0 });
       for (let n = 1; n <= 3; n++) {
-        engine.produceBlock([makeTx(kp, '', 1, 'transfer', {}, n)], {
+        await engine.produceBlock([makeTx(kp, '', 1, 'transfer', {}, n)], {
           address: val.address, publicKey: val.publicKey, privateKey: val.privateKey,
         });
       }
       return engine;
     };
-    const a = mkChain();
-    const b = mkChain();
+    const a = await mkChain();
+    const b = await mkChain();
     assert.strictEqual(a.nextBaseFee(), b.nextBaseFee(), 'same chain -> same next baseFee');
     // With tiny blocks (gasUsed < target) baseFee decays toward minimum but stays >= 1
     assert.ok(a.nextBaseFee() >= 1);
+  });
+});
+
+describe('Verification policy + SNARK fast path', () => {
+  const TEST_DIR = './test_chain_tmp';
+
+  after(async () => { await terminateZkWorkers(); });
+
+  function freshEngine() {
+    try { rmSync(TEST_DIR, { recursive: true }); } catch {}
+    return new AINativeEngine(new BlockStore(TEST_DIR));
+  }
+
+  test('sampled policy doubles gas and is stored on the task', async () => {
+    const engine = freshEngine();
+    const user = generateKeyPair();
+    engine.store.setAccount({ address: user.address, publicKey: user.publicKey, nonce: 0, balance: 10000, updatedAt: 0 });
+
+    const tx = makeTx(user, '', 0, 'submitInference', {
+      requester: user.address, targetModel: 'm1', inputCommitment: 'c',
+      maxFee: 10, deadline: 100, verificationType: 'sampled',
+    }, 1);
+    const val = generateKeyPair();
+    await engine.produceBlock([tx], { address: val.address, publicKey: val.publicKey, privateKey: val.privateKey });
+
+    // submitInference costs 60 gas; sampled multiplier x2
+    assert.strictEqual(engine.getAccount(user.address)?.balance, 10000 - 120);
+    const task = engine.store.getTasksByStatus('pending')[0];
+    assert.strictEqual(task?.verificationType, 'sampled');
+  });
+
+  test('unknown verificationType rejected', () => {
+    const engine = freshEngine();
+    const user = generateKeyPair();
+    engine.store.setAccount({ address: user.address, publicKey: user.publicKey, nonce: 0, balance: 100000, updatedAt: 0 });
+    const tx = makeTx(user, '', 0, 'submitInference', { verificationType: 'yolo' }, 1);
+    const res = engine.validateTransaction(tx);
+    assert.ok(typeof res === 'string' && res.includes('invalid verificationType'));
+  });
+
+  test('genuine relu8 SNARK resolves proveStep without WASM path', async () => {
+    const engine = freshEngine();
+    const treasury = generateKeyPair();
+    const user = generateKeyPair();
+    const node = generateKeyPair();
+    const challenger = generateKeyPair();
+
+    for (const [kp, bal] of [[treasury, 10000], [user, 5000], [node, 5000], [challenger, 2000]] as const) {
+      engine.store.setAccount({ address: kp.address, publicKey: kp.publicKey, nonce: 0, balance: bal, updatedAt: 0 });
+    }
+
+    await engine.produceBlock([makeTx(treasury, '', 0, 'registerModel', {
+      architecture: 'Relu-Test-Net', parameterCount: 64,
+      weightsHash: 'w_' + 'r'.repeat(32), runtimeHash: 'r_' + 's'.repeat(32),
+      stakingRequirement: 1, description: 'relu fast-path model',
+    }, 1)], treasury);
+    const modelId = engine.store.getModels()[0].modelId;
+
+    await engine.produceBlock([makeTx(node, '', 0, 'registerNode', {
+      stakedAmount: 100, availableCapacity: 2, maxCapacity: 2, activeTasks: 0,
+      reputation: 50, successfulInferences: 0, failedInferences: 0, supportedModels: [modelId],
+    }, 1)], treasury);
+
+    await engine.produceBlock([makeTx(user, '', 0, 'submitInference', {
+      requester: user.address, targetModel: modelId, inputCommitment: 'c',
+      maxFee: 100, deadline: 1000, verificationType: 'optimistic',
+    }, 1)], treasury);
+    const task = engine.store.getTasksByStatus('assigned')[0];
+    assert.ok(task, 'matched');
+
+    await engine.produceBlock([makeTx(node, '', 0, 'submitResult', {
+      taskId: task!.taskId, resultHash: 'h', resultOutput: 'ok', proofData: '',
+    }, 2)], treasury);
+
+    await engine.produceBlock([makeTx(challenger, '', 0, 'challengeResult', {
+      taskId: task!.taskId, reason: 'dispute for fast-path test',
+    }, 1)], treasury);
+    const gameId = engine.getTask(task!.taskId)?.gameId;
+    assert.ok(gameId);
+
+    // narrow to proving (single-layer spec)
+    await engine.produceBlock([makeTx(challenger, '', 0, 'bisect', { gameId, layerIndex: 0, traceRoot: 'tr0' }, 2)], treasury);
+    await engine.produceBlock([makeTx(node, '', 0, 'bisect', { gameId, layerIndex: 0, traceRoot: 'tr0' }, 3)], treasury);
+    assert.strictEqual(engine.getGame(gameId!)?.status, 'proving');
+
+    const layerInput = [0.5, -0.25, 1.0, -1.5, 2.0, -0.75, 0.125, -2.0];
+    const { proof, publicSignals, outputFixed } = await proveRelu(layerInput);
+    const layerOutput = outputFixed.map(v => v / 65536);
+
+    await engine.produceBlock([makeTx(node, '', 0, 'proveStep', {
+      gameId,
+      layerWeights: [], layerInput, layerBias: [],
+      layerOutput, actualTraceRoot: 'tr0',
+      snark: { proofType: 'relu8', proof, publicSignals },
+    }, 4)], treasury);
+
+    const resolved = engine.getGame(gameId!);
+    assert.strictEqual(resolved?.status, 'resolved_valid', 'fast path must resolve honestly');
+    assert.strictEqual(resolved?.winner, node.address);
+  });
+
+  test('forged/tampered SNARK cannot win — falls back and slashes', async () => {
+    const engine = freshEngine();
+    const treasury = generateKeyPair();
+    const user = generateKeyPair();
+    const node = generateKeyPair();
+    const challenger = generateKeyPair();
+
+    for (const [kp, bal] of [[treasury, 10000], [user, 5000], [node, 5000], [challenger, 2000]] as const) {
+      engine.store.setAccount({ address: kp.address, publicKey: kp.publicKey, nonce: 0, balance: bal, updatedAt: 0 });
+    }
+
+    await engine.produceBlock([makeTx(treasury, '', 0, 'registerModel', {
+      architecture: 'Relu-Test-Net', parameterCount: 64,
+      weightsHash: 'w_' + 'r'.repeat(32), runtimeHash: 'r_' + 's'.repeat(32),
+      stakingRequirement: 1, description: 'forge test',
+    }, 1)], treasury);
+    const modelId = engine.store.getModels()[0].modelId;
+
+    await engine.produceBlock([makeTx(node, '', 0, 'registerNode', {
+      stakedAmount: 100, availableCapacity: 2, maxCapacity: 2, activeTasks: 0,
+      reputation: 50, successfulInferences: 0, failedInferences: 0, supportedModels: [modelId],
+    }, 1)], treasury);
+
+    await engine.produceBlock([makeTx(user, '', 0, 'submitInference', {
+      requester: user.address, targetModel: modelId, inputCommitment: 'c',
+      maxFee: 100, deadline: 1000, verificationType: 'optimistic',
+    }, 1)], treasury);
+    const task = engine.store.getTasksByStatus('assigned')[0];
+
+    await engine.produceBlock([makeTx(node, '', 0, 'submitResult', {
+      taskId: task!.taskId, resultHash: 'h', resultOutput: 'ok', proofData: '',
+    }, 2)], treasury);
+
+    await engine.produceBlock([makeTx(challenger, '', 0, 'challengeResult', {
+      taskId: task!.taskId, reason: 'forge test challenge',
+    }, 1)], treasury);
+    const gameId = engine.getTask(task!.taskId)?.gameId!;
+
+    await engine.produceBlock([makeTx(challenger, '', 0, 'bisect', { gameId, layerIndex: 0, traceRoot: 'trX' }, 2)], treasury);
+    await engine.produceBlock([makeTx(node, '', 0, 'bisect', { gameId, layerIndex: 0, traceRoot: 'trX' }, 3)], treasury);
+
+    // Honest proof for honest input, but claimed OUTPUT is falsified:
+    const layerInput = [0.5, -0.25, 1.0, -1.5, 2.0, -0.75, 0.125, -2.0];
+    const { proof, publicSignals } = await proveRelu(layerInput);
+    const fakeOutput = new Array(8).fill(9.0); // does not match proof commitment nor WASM
+
+    await engine.produceBlock([makeTx(node, '', 0, 'proveStep', {
+      gameId,
+      layerWeights: [], layerInput, layerBias: [],
+      layerOutput: fakeOutput, actualTraceRoot: 'trX',
+      snark: { proofType: 'relu8', proof, publicSignals },
+    }, 4)], treasury);
+
+    const resolved = engine.getGame(gameId!);
+    assert.strictEqual(resolved?.status, 'resolved_slash', 'forged claim must be slashed');
+    assert.strictEqual(resolved?.winner, challenger.address);
   });
 });

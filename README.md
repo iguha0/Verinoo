@@ -40,7 +40,7 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full technical breakdown of eve
 ## Test Results
 
 ```
-83 tests across 17 suites — all passing
+87 tests across 18 suites — all passing
 ```
 
 | Layer | Tests | Status |
@@ -54,6 +54,7 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full technical breakdown of eve
 | ZK Circuit | 7 | ✅ |
 | Op Circuits (relu8/argmax8) | 7 | ✅ |
 | Layernorm Circuit | 10 | ✅ |
+| Policy + SNARK Fast Path | 4 | ✅ |
 | ZK Index | 10 | ✅ |
 | Groth16 SNARK | 3 | ✅ |
 | API Security | 4 | ✅ |

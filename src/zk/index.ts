@@ -344,6 +344,9 @@ export function getLayerSpec(architecture: string): LayerSpec[] {
       { index: 1, name: 'ffn_0', opType: 'ffn', inputShape: [1, 4], outputShape: [1, 4], tolerance: 0.001 },
       { index: 2, name: 'head', opType: 'head', inputShape: [1, 4], outputShape: [1, 4], tolerance: 0 },
     ],
+    'Relu-Test-Net': [
+      { index: 0, name: 'relu_0', opType: 'relu', inputShape: [1, 8], outputShape: [1, 8], tolerance: 0 },
+    ],
   };
 
   if (known[architecture]) return known[architecture];
