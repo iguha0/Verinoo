@@ -7,6 +7,7 @@
     "build": "tsc && cp src/wasm/inference.wasm dist/wasm/inference.wasm",
     "start": "node dist/cli/index.js",
     "test": "node --test --test-force-exit \"dist/**/*.test.js\"",
+    "bench:zk": "node scripts/benchmark-zk.mjs",
     "node1": "node dist/cli/index.js start --name=node1 --port=3001 --p2p=5001 --db=./data/node1 --validator",
     "node2": "node dist/cli/index.js start --name=node2 --port=3002 --p2p=5002 --db=./data/node2 --peers=ws://127.0.0.1:5001",
     "node3": "node dist/cli/index.js start --name=node3 --port=3003 --p2p=5003 --db=./data/node3 --peers=ws://127.0.0.1:5001,ws://127.0.0.1:5002"

@@ -10,6 +10,7 @@ key.json
 
 # Generated ZK artifacts (regenerate: node scripts/setup-groth16.mjs)
 circuits/build/
+circuits/bench/
 
 # Test run artifacts
 test_*_tmp/
