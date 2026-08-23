@@ -4,7 +4,7 @@ import { Block, BlockHeader, Transaction, InferenceTask, ComputeNode, AgentAccou
 import { signMessage, sha256, verifySignature, publicKeyToAddress } from '../wallet/crypto';
 import { getLayerSpec as zkGetLayerSpec } from '../zk';
 import { loadWasmSync, WasmRuntime } from '../wasm/runtime';
-import { gasCostFor, distributeFees } from './gas';
+import { gasCostFor, gasUsedOf, computeBaseFee, INITIAL_BASE_FEE, blockGasLimit } from './gas';
 
 function merkleRoot(hashes: string[]): string {
   if (hashes.length === 0) return sha256('empty-merkle');
@@ -22,6 +22,8 @@ function hashHeader(h: BlockHeader): string {
 
 export class AINativeEngine {
   readonly store: BlockStore;
+  /** In-memory memo of baseFeeAt(height); always derivable from chain data. */
+  private baseFeeMemo: { height: number; value: number } | null = null;
 
   constructor(store: BlockStore) {
     this.store = store;
@@ -38,6 +40,36 @@ export class AINativeEngine {
     }
   }
 
+  /**
+   * Deterministic EIP-1559 base fee for a given block height, derived purely
+   * from chain history so every node computes identical fees:
+   *   baseFee(0) = INITIAL_BASE_FEE
+   *   baseFee(H) = adjust(baseFee(H-1), gasUsed(block H-1))
+   */
+  baseFeeAt(height: number): number {
+    const latest = this.store.getChainHeight();
+    if (
+      this.baseFeeMemo &&
+      this.baseFeeMemo.height === Math.min(height, latest + 1) &&
+      height <= latest + 1
+    ) {
+      return this.baseFeeMemo.value;
+    }
+    let v = INITIAL_BASE_FEE;
+    for (let h = 1; h <= height; h++) {
+      const prevBlock = this.store.getBlockByHeight(h - 1);
+      const gasUsed = prevBlock ? gasUsedOf(prevBlock.transactions) : 0;
+      v = computeBaseFee(v, gasUsed);
+    }
+    this.baseFeeMemo = { height: Math.min(height, latest + 1), value: v };
+    return v;
+  }
+
+  /** Base fee that will apply to the next block to be produced. */
+  nextBaseFee(): number {
+    return this.baseFeeAt(this.store.getChainHeight() + 1);
+  }
+
   validateTransaction(tx: Transaction): string | true {
     if (!tx.publicKey || !tx.signature) return 'missing sig';
     if (publicKeyToAddress(tx.publicKey) !== tx.from) return 'sig/from mismatch';
@@ -45,23 +77,39 @@ export class AINativeEngine {
     const acc = this.store.getAccount(tx.from);
     if (acc && tx.nonce !== acc.nonce + 1) return `bad nonce (have ${acc.nonce})`;
     const bal = acc?.balance ?? 0;
-    if (bal < tx.value) return 'insufficient balance';
-    if (tx.gasLimit && tx.gasPrice) {
-      const maxFee = tx.gasLimit * tx.gasPrice;
-      if (bal < tx.value + maxFee) return 'insufficient balance for gas';
-    }
+    const maxFee = gasCostFor(tx) * this.nextBaseFee();
+    if (bal < tx.value + maxFee) return 'insufficient balance for value + gas';
     return true;
   }
 
-  executeTransaction(tx: Transaction, height: number): void {
+  /**
+   * Apply a transaction's full state transition including mandatory gas fees.
+   *
+   * Fee handling lives here (not in block production) so that peers applying
+   * remote blocks reach byte-identical account state. The fee is split
+   * 25% burned to treasury / 75% credited to the block's validator.
+   */
+  executeTransaction(tx: Transaction, height: number, validatorAddress?: string): void {
+    const fee = gasCostFor(tx) * this.baseFeeAt(height);
+
     const acc = this.store.getAccount(tx.from) || {
       address: tx.from, publicKey: tx.publicKey, nonce: 0, balance: 0, updatedAt: 0
     };
-    acc.balance -= tx.value;
+    acc.balance -= tx.value + fee;
     if (acc.balance < 0) throw new Error('overdraft');
     acc.nonce = tx.nonce;
     acc.updatedAt = height;
     this.store.setAccount(acc);
+
+    // Route fee: 25% burn / 75% validator
+    const payee = validatorAddress || 'treasury';
+    const valAcc = this.store.getAccount(payee) || { address: payee, publicKey: '', nonce: 0, balance: 0, updatedAt: 0 };
+    valAcc.balance += Math.floor(fee * 0.75);
+    valAcc.updatedAt = height;
+    this.store.setAccount(valAcc);
+    const treasury = this.store.getAccount('treasury') || { address: 'treasury', publicKey: '', nonce: 0, balance: 0, updatedAt: 0 };
+    treasury.balance += fee - Math.floor(fee * 0.75);
+    this.store.setAccount(treasury);
 
     if (tx.to && tx.to !== tx.from) {
       const recv = this.store.getAccount(tx.to) || { address: tx.to, publicKey: '', nonce: 0, balance: 0, updatedAt: 0 };
@@ -329,29 +377,20 @@ export class AINativeEngine {
     const prev = this.store.getLatestBlock()!;
     const height = prev.header.index + 1;
     const executed: Transaction[] = [];
-    let totalGasFee = 0;
+    let gasLeft = blockGasLimit();
     for (const tx of txs) {
+      const cost = gasCostFor(tx);
+      if (cost > gasLeft) { console.log(`[block] skip ${tx.txId.slice(0, 12)}: block gas limit`); continue; }
       if (this.validateTransaction(tx) === true) {
         try {
-          // Gas burn+reward (opt-in: only if tx specifies gas fields)
-          if (tx.gasLimit && tx.gasPrice) {
-            const cost = gasCostFor(tx);
-            const fee = cost * tx.gasPrice;
-            const acc = this.store.getAccount(tx.from)!;
-            acc.balance -= fee;
-            acc.nonce = tx.nonce;
-            acc.updatedAt = height;
-            this.store.setAccount(acc);
-            totalGasFee += fee;
-          }
-          this.executeTransaction(tx, height); executed.push(tx);
+          // Mandatory gas fee is applied inside executeTransaction so that
+          // peers mirroring this block compute identical account state.
+          this.executeTransaction(tx, height, validator.address);
+          executed.push(tx);
+          gasLeft -= cost;
         }
         catch (e: any) { console.log(`[exec] failed: ${e.message}`); }
       }
-    }
-
-    if (totalGasFee > 0) {
-      distributeFees(validator.address, totalGasFee, this.store);
     }
 
     this.matchPendingTasks(height);

@@ -363,7 +363,7 @@ Gas is **opt-in**: if `tx.gasLimit` and `tx.gasPrice` are undefined, no fee is c
 | **Multi-layer proof chain** | `proveModel` with SNARK per layer | ✅ Real |
 | **Per-opType Circom circuits** | Only 4×4 matmul exists | ⚠️ Prototype — needs embedding, layernorm, softmax circuits |
 | **Circuit size** | 28 private inputs, 1 public | ⚠️ Toy size for demo |
-| **Gas/fee market** | EIP-1559 style baseFee + fee burning | ✅ Per-op gas costs, opt-in wiring in `engine.ts` |
+| **Gas/fee market** | EIP-1559 style baseFee + fee burning | ✅ Mandatory per-op fees in `executeTransaction`; deterministic baseFee derived from chain history; 25% burn / 75% validator |
 | **Fork resolution** | Longest-chain via hash weight | ✅ `resolveFork`, `planReorg`, `fork.test.ts` |
 | **Persistent DB** | JSON files only | ❌ No SQLite/LevelDB |
 | **Real model weights** | Deterministically generated | ❌ Would need IPFS model registry |

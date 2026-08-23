@@ -36,6 +36,7 @@ describe('AINativeEngine', () => {
   test('validateTransaction checks signature', () => {
     const engine = freshEngine();
     const kp = generateKeyPair();
+    engine.store.setAccount({ address: kp.address, publicKey: kp.publicKey, nonce: 0, balance: 1000, updatedAt: 0 });
     const tx = makeTx(kp, '', 0, 'registerNode', { stakedAmount: 100, supportedModels: [] }, 1);
     const val = engine.validateTransaction(tx);
     assert.strictEqual(val, true, 'tx is valid');
@@ -248,5 +249,53 @@ describe('AINativeEngine', () => {
       threw = true;
     }
     assert.ok(threw, 'timed out bisection rejected');
+  });
+
+  test('mandatory gas: fee debited from sender, split validator/treasury', () => {
+    const engine = freshEngine();
+    const kp = generateKeyPair();
+    const val = generateKeyPair();
+    engine.store.setAccount({ address: kp.address, publicKey: kp.publicKey, nonce: 0, balance: 1000, updatedAt: 0 });
+    engine.store.setAccount({ address: val.address, publicKey: val.publicKey, nonce: 0, balance: 0, updatedAt: 0 });
+
+    const tx = makeTx(kp, 'recipient', 10, 'transfer', {}, 1);
+    engine.produceBlock([tx], { address: val.address, publicKey: val.publicKey, privateKey: val.privateKey });
+
+    // transfer costs gasCostFor=50 * baseFee=1
+    assert.strictEqual(engine.getAccount(kp.address)?.balance, 1000 - 10 - 50);
+    assert.strictEqual(engine.getAccount('recipient')?.balance, 10);
+    assert.strictEqual(engine.getAccount(val.address)?.balance, Math.floor(50 * 0.75)); // 37
+    const expectedTreasury = 50 - Math.floor(50 * 0.75); // 13 (25% burn)
+    assert.strictEqual(engine.getAccount('treasury')?.balance, expectedTreasury);
+  });
+
+  test('insufficient balance for value + gas rejected', () => {
+    const engine = freshEngine();
+    const kp = generateKeyPair();
+    engine.store.setAccount({ address: kp.address, publicKey: kp.publicKey, nonce: 0, balance: 40, updatedAt: 0 });
+    // transfer value 5 + fee 50 > 40 balance
+    const tx = makeTx(kp, 'r', 5, 'transfer', {}, 1);
+    const res = engine.validateTransaction(tx);
+    assert.ok(typeof res === 'string' && res.includes('gas'), 'value+gas check enforced');
+  });
+
+  test('baseFee deterministic across independent engines replaying same chain', () => {
+    const mkChain = () => {
+      const engine = freshEngine();
+      const kp = generateKeyPair();
+      const val = generateKeyPair();
+      engine.store.setAccount({ address: kp.address, publicKey: kp.publicKey, nonce: 0, balance: 100000, updatedAt: 0 });
+      for (let n = 1; n <= 3; n++) {
+        engine.produceBlock([makeTx(kp, '', 1, 'transfer', {}, n)], {
+          address: val.address, publicKey: val.publicKey, privateKey: val.privateKey,
+        });
+      }
+      return engine;
+    };
+    const a = mkChain();
+    const b = mkChain();
+    assert.strictEqual(a.nextBaseFee(), b.nextBaseFee(), 'same chain -> same next baseFee');
+    // With tiny blocks (gasUsed < target) baseFee decays toward minimum but stays >= 1
+    assert.ok(a.nextBaseFee() >= 1);
   });
 });

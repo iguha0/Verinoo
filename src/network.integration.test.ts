@@ -50,9 +50,12 @@ describe('Live 3-Node Network', () => {
     assert.ok(p2 >= 1, 'n2 connected to n1');
     assert.ok(p3 >= 1, 'n3 connected');
 
-    // Pre-fund a sender through n2's store directly
+    // Pre-fund a sender through every node's store directly
+    // (balances are per-node state; the validator enforces them when mining)
     const sender = generateKeyPair();
-    n2.store.setAccount({ address: sender.address, publicKey: sender.publicKey, nonce: 0, balance: 2000, updatedAt: 0 });
+    for (const n of [n1, n2]) {
+      n.store.setAccount({ address: sender.address, publicKey: sender.publicKey, nonce: 0, balance: 2000, updatedAt: 0 });
+    }
     // Also ensure n1 validator has balance for block rewards to work
     n1.store.setAccount({ address: n1.keyPair.address, publicKey: n1.keyPair.publicKey, nonce: 0, balance: 500, updatedAt: 0 });
 

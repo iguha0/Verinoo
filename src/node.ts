@@ -73,7 +73,7 @@ export class AINativeNode extends EventEmitter {
         }
         for (const b of plan.blocksToApply) {
           for (const tx of b.transactions) {
-            try { this.engine.executeTransaction(tx, b.header.index); } catch (e) {}
+            try { this.engine.executeTransaction(tx, b.header.index, b.header.validator); } catch (e) {}
           }
           console.log(`[sync] Apply #${b.header.index}`);
         }
@@ -85,7 +85,7 @@ export class AINativeNode extends EventEmitter {
         // Normal forward block
         console.log(`[sync] block #${block.header.index} from ${source || 'peer'}`);
         for (const tx of block.transactions) {
-          try { this.engine.executeTransaction(tx, block.header.index); } catch (e) {}
+          try { this.engine.executeTransaction(tx, block.header.index, block.header.validator); } catch (e) {}
         }
       } else if (newHead.header.hash !== latest.header.hash && newHead.header.hash === block.header.hash) {
         console.log(`[sync] competing at #${block.header.index} — current chain heavier`);
@@ -96,7 +96,7 @@ export class AINativeNode extends EventEmitter {
       const latest = this.engine.getLatestBlock();
       if (latest && block.header.index === latest.header.index + 1 && block.header.previousHash === latest.header.hash) {
         for (const tx of block.transactions) {
-          try { this.engine.executeTransaction(tx, block.header.index); } catch (e) {}
+          try { this.engine.executeTransaction(tx, block.header.index, block.header.validator); } catch (e) {}
         }
         this.store.saveBlock(block);
         console.log(`[sync] fetched #${block.header.index}`);

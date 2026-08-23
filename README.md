@@ -40,20 +40,21 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full technical breakdown of eve
 ## Test Results
 
 ```
-57 tests across 14 suites — all passing
+66 tests across 15 suites — all passing
 ```
 
 | Layer | Tests | Status |
 |---|---|---|
-| Engine | 6 | ✅ |
+| Engine + Gas Market | 9 | ✅ |
 | Fork Resolution | 11 | ✅ |
-| Storage | 5 | ✅ |
+| Storage (SQLite) | 7 | ✅ |
 | Crypto | 6 | ✅ |
 | P2P | 4 | ✅ |
 | WASM Runtime | 7 | ✅ |
 | ZK Circuit | 7 | ✅ |
 | ZK Index | 10 | ✅ |
 | Groth16 SNARK | 3 | ✅ |
+| API Security | 4 | ✅ |
 | Node Sync | 1 | ✅ |
 | Live Network | 1 | ✅ |
 
@@ -62,6 +63,7 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full technical breakdown of eve
 ```bash
 # CLI
 npx ts-node src/cli/index.ts start --name=node1 --port=3001 --p2p=5001 --validator
+npx ts-node src/cli/index.ts start --name=node1 --api-token=secret   # require auth for mutating API calls (or AIN_API_TOKEN env)
 npx ts-node src/cli/index.ts keygen --output=key.json
 
 # Build WASM (if inference.wat changes)

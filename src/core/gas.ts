@@ -10,21 +10,33 @@
 
 import { Transaction } from './types';
 
+/**
+ * Gas costs per op type, scaled for the prototype token supply
+ * (balances in tests/fixtures are in the hundreds-to-thousands range).
+ */
 const GAS_TABLE: Record<string, number> = {
-  registerNode: 50_000,
-  registerModel: 80_000,
-  registerAgent: 50_000,
-  submitInference: 60_000,
-  submitResult: 40_000,
-  challengeResult: 120_000,
-  bisect: 100_000,
-  proveStep: 80_000,
-  agentPayment: 50_000,
-  transfer: 50_000,
+  registerNode: 50,
+  registerModel: 80,
+  registerAgent: 50,
+  submitInference: 60,
+  submitResult: 40,
+  challengeResult: 120,
+  bisect: 100,
+  proveStep: 80,
+  agentPayment: 50,
+  transfer: 50,
 };
 
-const BLOCK_GAS_TARGET = 500_000;
-const BLOCK_GAS_LIMIT = 1_000_000;
+const BLOCK_GAS_TARGET = 500;
+const BLOCK_GAS_LIMIT = 1_000;
+
+/** Maximum total gas includable in one block. */
+export function blockGasLimit(): number {
+  return BLOCK_GAS_LIMIT;
+}
+
+/** baseFee applied to the genesis block; protocol constant. */
+export const INITIAL_BASE_FEE = 1;
 const BASE_FEE_DENOM = 8; // EIP-1559 elasticity
 const MAX_BASE_FEE_CHANGE = 12.5; // max +/- 12.5%
 
@@ -33,7 +45,11 @@ function clamp(n: number, min: number, max: number): number {
 }
 
 export function gasCostFor(tx: Transaction): number {
-  return GAS_TABLE[tx.data.type] || 50_000;
+  return GAS_TABLE[tx.data.type] || 50;
+}
+
+export function gasUsedOf(txs: Transaction[]): number {
+  return txs.reduce((s, t) => s + gasCostFor(t), 0);
 }
 
 export function computeBaseFee(prevBaseFee: number, gasUsed: number): number {
