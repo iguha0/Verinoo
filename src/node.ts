@@ -78,9 +78,8 @@ export class AINativeNode extends EventEmitter {
           console.log(`[sync] Apply #${b.header.index}`);
         }
 
-        // Update meta latest
-        const metaPath = path.join(this.config.dataDir, 'chain', 'meta', 'latest.json');
-        fs.writeFileSync(metaPath, JSON.stringify({ height: newHead.header.index, hash: newHead.header.hash }));
+        // Update meta latest (SQLite-backed)
+        this.store.saveBlock(newHead);
         console.log(`[sync] Reorg complete. New head #${newHead.header.index}`);
       } else if (newHead.header.hash === block.header.hash) {
         // Normal forward block

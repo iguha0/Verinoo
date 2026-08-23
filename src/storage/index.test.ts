@@ -1,17 +1,15 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert';
 import { BlockStore } from './index';
-import { rmSync, existsSync } from 'fs';
+import { rmSync, existsSync, mkdirSync, writeFileSync } from 'fs';
 
 describe('BlockStore', () => {
   const TEST_DIR = './test_store_tmp';
 
-  test('creates directories on init', () => {
+  test('creates sqlite database on init', () => {
     try { rmSync(TEST_DIR, { recursive: true }); } catch {}
     const store = new BlockStore(TEST_DIR);
-    assert.ok(existsSync(`${TEST_DIR}/blocks`), 'blocks dir');
-    assert.ok(existsSync(`${TEST_DIR}/accounts`), 'accounts dir');
-    assert.ok(existsSync(`${TEST_DIR}/games`), 'games dir');
+    assert.ok(existsSync(`${TEST_DIR}/chain.db`), 'chain.db exists');
     store.close();
   });
 
@@ -60,5 +58,50 @@ describe('BlockStore', () => {
     assert.strictEqual(filtered.length, 1);
     assert.strictEqual(filtered[0].gameId, 'g1');
     store.close();
+  });
+
+  test('persists across reopen', () => {
+    try { rmSync(TEST_DIR, { recursive: true }); } catch {}
+    const block = {
+      header: { hash: 'persist1', version: 1, index: 9, timestamp: Date.now(), previousHash: '000', validator: 'val', validatorPubKey: 'pk', validatorSignature: 'sig', stateRoot: 's', txRoot: 't', inferenceTasksRoot: 'i', computeRoot: 'c' },
+      transactions: [],
+    };
+    {
+      const store = new BlockStore(TEST_DIR);
+      store.saveBlock(block);
+      store.setAccount({ address: 'ai_persist', publicKey: 'pk', nonce: 1, balance: 42, updatedAt: 1 });
+      store.close();
+    }
+    {
+      const reopened = new BlockStore(TEST_DIR);
+      assert.strictEqual(reopened.getChainHeight(), 9);
+      assert.strictEqual(reopened.getBlockByHeight(9)?.header.hash, 'persist1');
+      assert.strictEqual(reopened.getAccount('ai_persist')?.balance, 42);
+      reopened.close();
+    }
+  });
+
+  test('migrates legacy JSON layout once', () => {
+    try { rmSync(TEST_DIR, { recursive: true }); } catch {}
+    // Simulate the pre-SQLite directory-of-JSON-files layout
+    mkdirSync(`${TEST_DIR}/blocks`, { recursive: true });
+    mkdirSync(`${TEST_DIR}/accounts`, { recursive: true });
+    writeFileSync(`${TEST_DIR}/blocks/0.json`, JSON.stringify({
+      header: { hash: 'genesisX', version: 1, index: 0, timestamp: 0, previousHash: '', validator: 'v', validatorPubKey: 'pk', validatorSignature: 'sig', stateRoot: 's', txRoot: 't', inferenceTasksRoot: 'i', computeRoot: 'c' },
+      transactions: [],
+    }));
+    writeFileSync(`${TEST_DIR}/accounts/ai_old.json`, JSON.stringify({ address: 'ai_old', publicKey: 'pk', nonce: 7, balance: 1000, updatedAt: 1 }));
+
+    const store = new BlockStore(TEST_DIR);
+    assert.strictEqual(store.getBlockByHeight(0)?.header.hash, 'genesisX');
+    assert.strictEqual(store.getChainHeight(), 0);
+    assert.strictEqual(store.getAccount('ai_old')?.balance, 1000);
+    store.close();
+
+    // Reopen must not duplicate or lose data (migration is one-shot)
+    const again = new BlockStore(TEST_DIR);
+    assert.strictEqual(again.getBlockByHeight(0)?.header.hash, 'genesisX');
+    assert.ok(existsSync(`${TEST_DIR}/chain.db`));
+    again.close();
   });
 });
