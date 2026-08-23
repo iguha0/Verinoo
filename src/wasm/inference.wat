@@ -60,13 +60,15 @@
     (local.get $x)
   )
 
-  ;; Fixed-point divide: (a << 16) / b  =>  Q16.16 result
+  ;; Fixed-point divide: floor((a * 2^16) / b)  =>  Q16.16 result
+  ;; NOTE: previous version shifted right by b instead of dividing —
+  ;; every consumer (layernorm, softmax) silently produced garbage.
   (func $fdiv (param $a i32) (param $b i32) (result i32)
     (if (i32.eq (local.get $b) (i32.const 0))
       (then (return (i32.const 0))))
     (i32.wrap_i64
-      (i64.shr_s
-        (i64.shl (i64.extend_i32_s (local.get $a)) (i64.const 16))
+      (i64.div_s
+        (i64.mul (i64.extend_i32_s (local.get $a)) (i64.const 65536))
         (i64.extend_i32_s (local.get $b)))))
 
   ;; matmul(M,N,K, A_offset, B_offset, out_offset)
