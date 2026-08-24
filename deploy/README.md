@@ -24,7 +24,8 @@ sudo git clone https://github.com/indrajitguha/ai_chain_network /opt/ainative
 sudo chown -R ainative:ainative /opt/ainative
 cd /opt/ainative
 
-# 2. build (needs node >= 20; devDependencies required for tsc)
+# 2. build — Node.js >= 22.13 required (node:sqlite); Node 24 LTS recommended.
+#    devDependencies are required for tsc.
 sudo -u ainative npm ci && sudo -u ainative npm run build
 sudo -u ainative npm run setup:rapidsnark || true   # optional native prover
 
