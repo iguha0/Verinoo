@@ -2,6 +2,7 @@
   "name": "ai-chain-network",
   "version": "0.1.0",
   "description": "AI-native decentralized blockchain network",
+  "license": "AGPL-3.0",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc && cp src/wasm/inference.wasm dist/wasm/inference.wasm",
