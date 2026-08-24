@@ -93,8 +93,9 @@ async function main() {
   const sj = await benchSnarkjs(snarkjs, wasm, zkey, input);
   console.log(`snarkjs   : ${sj.median.toFixed(1)} ms`);
 
-  const bin = process.env.AIN_RAPIDSNARK_BIN;
-  if (bin && existsSync(bin)) {
+  const { rapidsnarkBinary } = await import('../dist/zk/prover.js');
+  const bin = rapidsnarkBinary();
+  if (bin) {
     const rs = await benchRapidsnark(bin, snarkjs, wasm, zkey, input);
     console.log(`rapidsnark: ${rs.median.toFixed(1)} ms   speedup ${(sj.median / rs.median).toFixed(1)}x`);
     // cross-verify: rapidsnark proof must verify under snarkjs

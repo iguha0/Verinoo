@@ -9,6 +9,7 @@
     "test": "node --test --test-force-exit \"dist/**/*.test.js\"",
     "bench:zk": "node scripts/benchmark-zk.mjs",
     "build:ops": "node scripts/build-ops-circuits.mjs",
+    "setup:rapidsnark": "node scripts/setup-rapidsnark.mjs",
     "bench:provers": "node scripts/bench-provers.mjs",
     "node1": "node dist/cli/index.js start --name=node1 --port=3001 --p2p=5001 --db=./data/node1 --validator",
     "node2": "node dist/cli/index.js start --name=node2 --port=3002 --p2p=5002 --db=./data/node2 --peers=ws://127.0.0.1:5001",

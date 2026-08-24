@@ -21,13 +21,20 @@ import { tmpdir } from 'os';
 
 export type ProverBackend = 'snarkjs' | 'rapidsnark';
 
+/** Discovery order: explicit env var -> vendored binary -> null. */
 export function rapidsnarkBinary(): string | null {
   const p = process.env.AIN_RAPIDSNARK_BIN;
-  return p && existsSync(p) ? p : null;
+  if (p && existsSync(p)) return p;
+  const vendored = resolve(__dirname, '../../vendor/rapidsnark/bin/prover');
+  return existsSync(vendored) ? vendored : null;
 }
 
+/** Native backend is the DEFAULT whenever a binary is discoverable
+ *  (vendored or via AIN_RAPIDSNARK_BIN); snarkjs is the fallback.
+ *  Force JS explicitly with AIN_PROVER=snarkjs. */
 export function activeBackend(): ProverBackend {
-  return process.env.AIN_PROVER === 'rapidsnark' && rapidsnarkBinary() ? 'rapidsnark' : 'snarkjs';
+  if (process.env.AIN_PROVER === 'snarkjs') return 'snarkjs';
+  return rapidsnarkBinary() ? 'rapidsnark' : 'snarkjs';
 }
 
 function run(cmd: string, args: string[]): Promise<void> {
@@ -59,6 +66,12 @@ export async function groth16Prove(
       const publicPath = wtnsPath.replace(/\.wtns$/, '_public.json');
       try {
         await snarkjs.wtns.calculate(input as any, wasmPath, wtnsPath);
+        // release snarkjs helpers; only witness gen runs on JS here
+        try {
+          const g = (globalThis as Record<string, unknown>).curve_bn128 as { terminate?: () => Promise<void> } | undefined;
+          if (g?.terminate) await g.terminate();
+          (globalThis as Record<string, unknown>).curve_bn128 = null;
+        } catch {}
         await run(rapidsnarkBinary()!, [zkeyPath, wtnsPath, proofPath, publicPath]);
         const proof = JSON.parse(readFileSync(proofPath, 'utf-8'));
         const publicSignals = JSON.parse(readFileSync(publicPath, 'utf-8'));

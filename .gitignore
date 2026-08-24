@@ -19,3 +19,6 @@ test_live_net/
 
 # OS
 .DS_Store
+
+# Vendored native binaries (scripts/setup-rapidsnark.mjs re-downloads)
+vendor/

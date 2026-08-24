@@ -82,7 +82,7 @@ Measured constraint model for the matmul circuit: `c(N) = 2N² + 3N`.
 | ✅ 64×64 matmul measured (shipped) | real embedding blocks | 4160, 735 ms (pot14) |
 | ✅ layernorm8 (shipped) | integer sqrt via bounds witness + reciprocal proofs | 376 |
 | ✅ softmax8 (shipped) | hard-max-with-margin rule mirroring WAT; equality-indicator design, no signed-bit tricks | 552 |
-| ✅ Prover abstraction (shipped) | snarkjs default; rapidsnark CLI via AIN_RAPIDSNARK_BIN (~50-100x); gnark = Go sidecar path | — |
+| ✅ Prover abstraction (shipped) | rapidsnark native is the DEFAULT (vendored via `npm run setup:rapidsnark`, auto-discovered); snarkjs = automatic fallback. Measured end-to-end: 5.1x @ N=32, 4.2x @ N=64 — speedup grows with circuit size as MSM dominates; gnark = Go sidecar path | — |
 
 Note on softmax/exp: the decision resolved itself — inference.wat never
 computed a real exp ("exact softmax is not critical; determinism is").

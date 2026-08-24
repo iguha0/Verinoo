@@ -81,6 +81,11 @@ npm run build:ops
 
 # ZK scaling benchmarks (writes docs/ZK_BENCHMARKS.md)
 npm run bench:zk
+
+# Native proving via rapidsnark (auto-defaults when vendored; snarkjs fallback)
+npm run setup:rapidsnark        # download platform binary into vendor/
+AIN_PROVER=snarkjs npm start    # force the JS backend if ever needed
+npm run bench:provers           # compare backends on your machine
 ```
 
 ## License
