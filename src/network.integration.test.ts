@@ -2,7 +2,8 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert';
 import http from 'http';
 import { rmSync } from 'fs';
-import { generateKeyPair, signMessage } from './wallet/crypto';
+import { generateKeyPair } from './wallet/crypto';
+import { signTransaction } from './core/canonical';
 import { AINativeNode } from './node';
 
 function httpGet(port: number, path: string): Promise<any> {
@@ -60,16 +61,14 @@ describe('Live 3-Node Network', () => {
     n1.store.setAccount({ address: n1.keyPair.address, publicKey: n1.keyPair.publicKey, nonce: 0, balance: 500, updatedAt: 0 });
 
     // Now submit real signed tx from sender via n2's API
-    const crypto = require('crypto');
     const txData = {
       type: 'registerModel',
       data: { architecture: 'LiveNet-Model', parameterCount: 750_000_000, weightsHash: 'w_live_' + 'c'.repeat(28), runtimeHash: 'r_live_' + 'd'.repeat(28), stakingRequirement: 50, description: 'Live multi-node test model' }
     };
-    const realTxId = crypto.createHash('sha256').update(JSON.stringify({ type: txData.type, data: txData.data, from: sender.address, nonce: 1 })).digest('hex').substring(0, 32);
-    const realTx = {
-      txId: realTxId, from: sender.address, to: '', value: 0, nonce: 1,
-      data: txData, signature: signMessage(realTxId, sender.privateKey), publicKey: sender.publicKey
-    };
+    const realTx = signTransaction(
+      { from: sender.address, to: '', value: 0, nonce: 1, data: txData, publicKey: sender.publicKey },
+      sender.privateKey
+    );
 
     console.log('\n   Submitting tx via n2 API...');
     const resp = await httpPost(30102, '/tx', realTx);

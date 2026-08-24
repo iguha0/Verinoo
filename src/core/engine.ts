@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { BlockStore } from '../storage';
 import { Block, BlockHeader, Transaction, InferenceTask, ComputeNode, AgentAccount, AccountState, VerificationGame } from '../core/types';
 import { signMessage, sha256, verifySignature, publicKeyToAddress } from '../wallet/crypto';
+import { canonicalTxIdOf } from './canonical';
 import { getLayerSpec as zkGetLayerSpec } from '../zk';
 import { loadWasmSync, WasmRuntime } from '../wasm/runtime';
 import { gasCostFor, gasUsedOf, computeBaseFee, INITIAL_BASE_FEE, blockGasLimit, policyMultiplier, policyOf, isValidPolicy, VerificationPolicy } from './gas';
@@ -75,6 +76,9 @@ export class AINativeEngine {
     if (!tx.publicKey || !tx.signature) return 'missing sig';
     if (publicKeyToAddress(tx.publicKey) !== tx.from) return 'sig/from mismatch';
     if (!verifySignature(tx.txId, tx.signature, tx.publicKey)) return 'invalid sig';
+    // Canonical binding: txId must be the hash of the exact unsigned payload.
+    // Without this, signed transactions could be malleated after signing.
+    if (tx.txId !== canonicalTxIdOf(tx)) return 'txId does not match transaction contents';
     const acc = this.store.getAccount(tx.from);
     if (acc && tx.nonce !== acc.nonce + 1) return `bad nonce (have ${acc.nonce})`;
     const bal = acc?.balance ?? 0;

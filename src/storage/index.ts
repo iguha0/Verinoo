@@ -71,9 +71,73 @@ export class BlockStore {
         task_id TEXT NOT NULL,
         json TEXT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS undo_journal (
+        jkey TEXT NOT NULL,
+        seq INTEGER NOT NULL,
+        kind TEXT NOT NULL,
+        key TEXT NOT NULL,
+        prior_json TEXT,
+        PRIMARY KEY (jkey, seq)
+      );
     `);
 
     this.migrateFromJsonIfNeeded();
+  }
+
+  // === Undo journal (reorg rollback) ===
+  // While an undo context is open, every setter captures the prior row once,
+  // enabling exact reverse-replay of a block's state transitions.
+
+  private undoJkey: string | null = null;
+  private undoSeen = new Set<string>();
+
+  static journalKey(prevHash: string, height: number): string {
+    return prevHash.slice(0, 32) + ':' + height;
+  }
+
+  beginUndo(jkey: string): void {
+    this.undoJkey = jkey;
+    this.undoSeen.clear();
+  }
+
+  endUndo(): void {
+    this.undoJkey = null;
+    this.undoSeen.clear();
+  }
+
+  private captureIfOpen(kind: string, key: string, prior: unknown): void {
+    if (!this.undoJkey) return;
+    const dedupe = kind + ':' + key;
+    if (this.undoSeen.has(dedupe)) return;
+    this.undoSeen.add(dedupe);
+    const seq = this.undoSeen.size;
+    this.db.prepare('INSERT INTO undo_journal (jkey, seq, kind, key, prior_json) VALUES (?, ?, ?, ?, ?)')
+      .run(this.undoJkey, seq, kind, key, prior === undefined ? null : JSON.stringify(prior));
+  }
+
+  /** Reverse-replay one block's journal, then delete it. Returns entries replayed. */
+  undoJournal(jkey: string): number {
+    const rows = this.db.prepare('SELECT seq, kind, key, prior_json FROM undo_journal WHERE jkey = ? ORDER BY seq DESC').all(jkey) as any[];
+    for (const r of rows) {
+      const del = (table: string, col: string) =>
+        this.db.prepare(`DELETE FROM ${table} WHERE ${col} = ?`).run(r.key);
+      const restore = (setter: (v: any) => void) => { setter(JSON.parse(r.prior_json)); };
+      switch (r.kind) {
+        case 'account':      r.prior_json === null ? del('accounts', 'address')     : restore(v => this.setAccount(v)); break;
+        case 'model':        r.prior_json === null ? del('models', 'model_id')      : restore(v => this.setModel(v)); break;
+        case 'task':         r.prior_json === null ? del('tasks', 'task_id')        : restore(v => this.setTask(v)); break;
+        case 'compute_node': r.prior_json === null ? del('compute_nodes', 'node_id'): restore(v => this.setNode(v)); break;
+        case 'agent':        r.prior_json === null ? del('agents', 'address')       : restore(v => this.setAgent(v)); break;
+        case 'game':         r.prior_json === null ? del('games', 'game_id')        : restore(v => this.setGame(v)); break;
+        case 'meta':         r.prior_json === null ? del('meta', 'key')             : restore(v => this.setMetaRaw(r.key, v.value)); break;
+      }
+    }
+    this.db.prepare('DELETE FROM undo_journal WHERE jkey = ?').run(jkey);
+    return rows.length;
+  }
+
+  dropJournal(jkey: string): void {
+    this.db.prepare('DELETE FROM undo_journal WHERE jkey = ?').run(jkey);
   }
 
   // === Legacy JSON migration ===
@@ -154,6 +218,8 @@ export class BlockStore {
   }
 
   private setMetaJson(key: string, value: unknown): void {
+    const prior = this.getMetaRaw(key);
+    this.captureIfOpen('meta', key, prior === undefined ? undefined : { value: prior });
     this.setMetaRaw(key, JSON.stringify(value));
   }
 
@@ -185,6 +251,11 @@ export class BlockStore {
     return row ? JSON.parse(row.json) : undefined;
   }
 
+  getBlockByHash(hash: string): Block | undefined {
+    const row = this.db.prepare('SELECT json FROM blocks WHERE hash = ? LIMIT 1').get(hash) as { json: string } | undefined;
+    return row ? JSON.parse(row.json) : undefined;
+  }
+
   getLatestBlock(): Block | undefined {
     const m = this.getMetaJson<{ height: number }>('latest');
     return m ? this.getBlockByHeight(m.height) : undefined;
@@ -197,6 +268,7 @@ export class BlockStore {
   // === Accounts ===
 
   setAccount(a: AccountState) {
+    this.captureIfOpen('account', a.address, this.getAccount(a.address));
     this.db.prepare('INSERT INTO accounts (address, json) VALUES (?, ?) ON CONFLICT(address) DO UPDATE SET json = excluded.json')
       .run(a.address, JSON.stringify(a));
   }
@@ -209,6 +281,7 @@ export class BlockStore {
   // === Models ===
 
   setModel(m: ModelRegistryEntry) {
+    this.captureIfOpen('model', m.modelId, this.getModel(m.modelId));
     this.db.prepare('INSERT INTO models (model_id, json) VALUES (?, ?) ON CONFLICT(model_id) DO UPDATE SET json = excluded.json')
       .run(m.modelId, JSON.stringify(m));
   }
@@ -226,6 +299,7 @@ export class BlockStore {
   // === Tasks ===
 
   setTask(t: InferenceTask) {
+    this.captureIfOpen('task', t.taskId, this.getTask(t.taskId));
     this.db.prepare('INSERT INTO tasks (task_id, status, json) VALUES (?, ?, ?) ON CONFLICT(task_id) DO UPDATE SET status = excluded.status, json = excluded.json')
       .run(t.taskId, t.status, JSON.stringify(t));
   }
@@ -243,6 +317,7 @@ export class BlockStore {
   // === Compute Nodes ===
 
   setNode(n: ComputeNode) {
+    this.captureIfOpen('compute_node', n.nodeId, this.getNode(n.nodeId));
     this.db.prepare('INSERT INTO compute_nodes (node_id, reputation, json) VALUES (?, ?, ?) ON CONFLICT(node_id) DO UPDATE SET reputation = excluded.reputation, json = excluded.json')
       .run(n.nodeId, n.reputation, JSON.stringify(n));
   }
@@ -264,6 +339,7 @@ export class BlockStore {
   // === Agents ===
 
   setAgent(a: AgentAccount) {
+    this.captureIfOpen('agent', a.address, this.getAgent(a.address));
     this.db.prepare('INSERT INTO agents (address, json) VALUES (?, ?) ON CONFLICT(address) DO UPDATE SET json = excluded.json')
       .run(a.address, JSON.stringify(a));
   }
@@ -281,6 +357,7 @@ export class BlockStore {
   // === Meta ===
 
   setMeta(key: string, value: string) {
+    this.captureIfOpen('meta', key, this.getMetaRaw(key) === undefined ? undefined : { value: this.getMetaRaw(key)! });
     this.setMetaRaw(key, value);
   }
 
@@ -291,6 +368,7 @@ export class BlockStore {
   // === Verification Games ===
 
   setGame(g: any) {
+    this.captureIfOpen('game', g.gameId, this.getGame(g.gameId));
     this.db.prepare('INSERT INTO games (game_id, task_id, json) VALUES (?, ?, ?) ON CONFLICT(game_id) DO UPDATE SET task_id = excluded.task_id, json = excluded.json')
       .run(g.gameId, g.taskId ?? '', JSON.stringify(g));
   }

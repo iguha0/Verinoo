@@ -1,5 +1,11 @@
 # Roadmap
 
+> **Reference client notice:** this TypeScript repository is now the
+> **reference client / spec oracle** for Verinoo. The production testnet
+> node is being built in Rust at [iguha0/verinoo-node](https://github.com/iguha0/verinoo-node);
+> its conformance suite pins byte-parity to this repo's engine. Testnet
+> phases below are executed on the Rust track.
+
 Where this is, and where it's going. Items move to "done" only with tests +
 benchmarks attached. Design detail for the verification tiers lives in
 [docs/HYBRID_VERIFICATION.md](docs/HYBRID_VERIFICATION.md).

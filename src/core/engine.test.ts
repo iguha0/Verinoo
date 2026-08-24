@@ -7,14 +7,14 @@ import { signMessage, generateKeyPair } from '../wallet/crypto';
 import { deriveLayerWeights } from '../zk/circuit';
 import { loadWasmSync, WasmRuntime } from '../wasm/runtime';
 import { proveRelu } from '../zk/groth16ops';
+import { signTransaction } from '../core/canonical';
 import { terminateZkWorkers } from '../zk/groth16';
 
 function makeTx(from: any, to: string, value: number, type: string, data: any, nonce: number) {
-  const crypto = require('crypto');
-  const txBase: any = { txId: '', from: from.address, to, value, nonce, data: { type, data }, publicKey: from.publicKey, signature: '' };
-  txBase.txId = crypto.createHash('sha256').update(JSON.stringify({ type, data, from: from.address, nonce })).digest('hex').substring(0, 32);
-  txBase.signature = signMessage(txBase.txId, from.privateKey);
-  return txBase;
+  return signTransaction(
+    { from: from.address, to, value, nonce, data: { type, data }, publicKey: from.publicKey },
+    from.privateKey
+  );
 }
 
 describe('AINativeEngine', () => {
