@@ -122,6 +122,17 @@ export function createApiServer(engine: AINativeEngine, p2p: P2PNetwork, nodeId:
     }
   });
 
+  // Landing site at the root — every node doubles as a web endpoint.
+  app.get('/', (_req, res) => {
+    try {
+      const htmlPath = resolve(__dirname, '../../website/index.html');
+      const html = readFileSync(htmlPath, 'utf-8');
+      res.type('html').send(html);
+    } catch (e) {
+      res.redirect('/dashboard');
+    }
+  });
+
   function validateTxBody(tx: any): string | null {
     if (!tx || typeof tx !== 'object' || Array.isArray(tx)) return 'body must be a transaction object';
     // Required non-empty strings

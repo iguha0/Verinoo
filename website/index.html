@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AINative — Verifiable AI inference on-chain</title>
+<meta name="description" content="An experimental AI-native blockchain: deterministic WASM inference verified by Groth16 zkSNARKs, dispute games, and hybrid sampling that keeps verification cost constant at any model size.">
+<style>
+  /* ============ tokens ============ */
+  :root {
+    --bg: #0c0e0d;
+    --bg-raised: #121514;
+    --bg-panel: #161a18;
+    --line: #232927;
+    --text: #d6dbd8;
+    --text-dim: #8b948f;
+    --text-faint: #5c6560;
+    --accent: #e8a33d;        /* terminal amber, locked for whole page */
+    --accent-dim: #a87527;
+    --mono: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --max: 1120px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: rgba(232,163,61,.25); }
+
+  .wrap { max-width: var(--max); margin: 0 auto; padding: 0 24px; }
+  .mono { font-family: var(--mono); }
+
+  a { color: inherit; text-decoration: none; }
+  a:hover { color: var(--accent); }
+
+  /* ============ nav ============ */
+  nav {
+    position: sticky; top: 0; z-index: 50;
+    height: 64px;
+    display: flex; align-items: center;
+    border-bottom: 1px solid var(--line);
+    background: rgba(12,14,13,.85);
+    backdrop-filter: blur(10px);
+  }
+  .nav-inner { width: 100%; max-width: var(--max); margin: 0 auto; padding: 0 24px;
+    display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+  .logo { font-family: var(--mono); font-weight: 700; font-size: 15px; letter-spacing: .02em; }
+  .logo em { color: var(--accent); font-style: normal; }
+  .nav-links { display: flex; gap: 28px; font-size: 13.5px; color: var(--text-dim); white-space: nowrap; }
+  .nav-links a:hover { color: var(--text); }
+  @media (max-width: 720px) { .nav-links a:not(.nav-cta) { display: none; } }
+
+  /* ============ buttons ============ */
+  .btn {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1;
+    padding: 12px 20px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    color: var(--text);
+    transition: transform .15s ease, border-color .15s ease, background .15s ease;
+    cursor: pointer;
+  }
+  .btn:hover { border-color: var(--accent-dim); color: var(--accent); }
+  .btn:active { transform: translateY(1px); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #14100a; font-weight: 600; }
+  .btn.primary:hover { background: #f0b055; color: #14100a; }
+
+  /* ============ hero ============ */
+  header.hero {
+    position: relative;
+    min-height: calc(100dvh - 64px);
+    display: flex; align-items: center;
+    overflow: hidden;
+    border-bottom: 1px solid var(--line);
+  }
+  #net { position: absolute; inset: 0; opacity: .5; }
+  .hero-inner {
+    position: relative; z-index: 2;
+    width: 100%; max-width: var(--max); margin: 0 auto; padding: 80px 24px 64px;
+    pointer-events: none;
+  }
+  .hero-inner .btn, .hero-inner nav { pointer-events: auto; }
+  .hero-inner > * { pointer-events: none; }
+  .hero-inner .cta-row a { pointer-events: auto; }
+  .eyebrow {
+    font-family: var(--mono); font-size: 11.5px; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--accent-dim);
+    margin-bottom: 22px;
+  }
+  h1 {
+    font-size: clamp(34px, 5.2vw, 58px);
+    line-height: 1.06;
+    letter-spacing: -0.02em;
+    font-weight: 700;
+    max-width: 15ch;
+  }
+  h1 .dim { color: var(--text-faint); }
+  .hero-sub {
+    margin-top: 22px;
+    max-width: 52ch;
+    color: var(--text-dim);
+    font-size: 17px;
+  }
+  .cta-row { margin-top: 34px; display: flex; gap: 14px; flex-wrap: wrap; }
+
+  /* reveal animation */
+  .rv { opacity: 0; transform: translateY(18px); transition: opacity .7s ease, transform .7s ease; }
+  .rv.in { opacity: 1; transform: none; }
+  .rv.d1 { transition-delay: .08s } .rv.d2 { transition-delay: .16s }
+  .rv.d3 { transition-delay: .24s } .rv.d4 { transition-delay: .32s }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .rv { opacity: 1; transform: none; transition: none; }
+    #net { display: none; }
+  }
+
+  /* ============ sections ============ */
+  section { padding: 96px 0; border-bottom: 1px solid var(--line); }
+  .kicker {
+    font-family: var(--mono); font-size: 11.5px; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--accent-dim); margin-bottom: 18px;
+  }
+  h2 { font-size: clamp(26px, 3.4vw, 38px); letter-spacing: -0.015em; line-height: 1.15; max-width: 24ch; }
+  .lede { color: var(--text-dim); max-width: 62ch; margin-top: 14px; }
+
+  /* stat wall */
+  .stats {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 1px; background: var(--line);
+    border: 1px solid var(--line);
+    margin-top: 48px;
+  }
+  .stat { background: var(--bg); padding: 30px 26px; }
+  .stat .num {
+    font-family: var(--mono); font-size: clamp(28px, 3.6vw, 42px);
+    letter-spacing: -.03em; color: var(--accent); line-height: 1;
+  }
+  .stat .num.mut { color: var(--text); }
+  .stat .lbl { margin-top: 12px; font-size: 13.5px; color: var(--text-dim); }
+  .stat .lbl code { font-family: var(--mono); font-size: 12px; color: var(--text-faint); }
+  @media (max-width: 720px) { .stats { grid-template-columns: 1fr; } }
+
+  /* circuits bento: asymmetric 2+3 */
+  .bento { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; margin-top: 48px; }
+  .cell {
+    background: var(--bg-panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 24px;
+    position: relative;
+    overflow: hidden;
+  }
+  .cell.wide { grid-column: span 3; }
+  .cell.narrow { grid-column: span 2; }
+  .cell .op { font-family: var(--mono); font-size: 14px; color: var(--accent); }
+  .cell .cstr { position: absolute; top: 24px; right: 24px; font-family: var(--mono); font-size: 11px; color: var(--text-faint); }
+  .cell p { margin-top: 10px; font-size: 13.5px; color: var(--text-dim); }
+  .cell.tinted { background: linear-gradient(160deg, #1a1710 0%, var(--bg-panel) 70%); border-color: #35301f; }
+  @media (max-width: 900px) {
+    .cell.wide, .cell.narrow { grid-column: span 6; }
+  }
+
+  /* architecture: split, code right */
+  .split { display: grid; grid-template-columns: 5fr 6fr; gap: 56px; align-items: center; }
+  @media (max-width: 900px) { .split { grid-template-columns: 1fr; gap: 32px; } }
+  .stack-list { list-style: none; margin-top: 26px; }
+  .stack-list li {
+    display: flex; gap: 14px; padding: 13px 0;
+    border-top: 1px solid var(--line);
+    font-size: 14.5px;
+  }
+  .stack-list li:last-child { border-bottom: 1px solid var(--line); }
+  .stack-list .tag { font-family: var(--mono); font-size: 12px; color: var(--accent-dim); min-width: 88px; padding-top: 2px; }
+  .stack-list .desc { color: var(--text-dim); }
+  .terminal {
+    background: #0a0c0b;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+    font-family: var(--mono);
+    font-size: 13px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+  }
+  .terminal .bar {
+    display: flex; gap: 6px; padding: 12px 14px;
+    border-bottom: 1px solid var(--line);
+  }
+  .terminal .bar i { width: 10px; height: 10px; border-radius: 50%; background: #2a2f2d; display: block; }
+  .terminal pre {
+    padding: 20px 18px 24px;
+    line-height: 1.75;
+    overflow-x: auto;
+    color: var(--text-dim);
+  }
+  .terminal .p { color: var(--accent); }
+  .terminal .c { color: var(--text-faint); }
+
+  /* honesty: grouped chunks */
+  .chunks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px; margin-top: 48px; }
+  @media (max-width: 900px) { .chunks { grid-template-columns: 1fr; } }
+  .chunk h3 { font-family: var(--mono); font-size: 13px; font-weight: 600; letter-spacing: .06em; color: var(--text); padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+  .chunk ul { list-style: none; margin-top: 6px; }
+  .chunk li {
+    padding: 9px 0; font-size: 14px; color: var(--text-dim);
+    display: flex; justify-content: space-between; gap: 12px;
+  }
+  .chunk li .ok { color: var(--accent); font-family: var(--mono); font-size: 11px; padding-top: 3px; flex-shrink: 0; }
+  .chunk li .warn { color: var(--text-faint); font-family: var(--mono); font-size: 11px; padding-top: 3px; flex-shrink: 0; }
+
+  /* access steps */
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 48px; counter-reset: step; }
+  @media (max-width: 900px) { .steps { grid-template-columns: 1fr; } }
+  .step {
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 26px 24px 30px;
+  }
+  .step::before {
+    counter-increment: step;
+    content: "0" counter(step);
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent);
+  }
+  .step h3 { margin-top: 14px; font-size: 16px; }
+  .step p { margin-top: 8px; font-size: 13.5px; color: var(--text-dim); }
+  .step code { font-family: var(--mono); font-size: 12px; color: var(--text); background: #0a0c0b; padding: 2px 6px; border-radius: 4px; border: 1px solid var(--line); }
+
+  /* footer cta band */
+  .band { padding: 110px 0; text-align: center; }
+  .band h2 { margin: 0 auto; }
+  .band .lede { margin-left: auto; margin-right: auto; }
+  .band .cta-row { justify-content: center; }
+
+  footer { padding: 44px 0 60px; color: var(--text-faint); font-size: 13px; }
+  footer .wrap { display: flex; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
+  footer .mono { font-size: 12px; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a class="logo" href="#">ainative<em>_</em>chain</a>
+    <div class="nav-links">
+      <a href="#wall">Why</a>
+      <a href="#circuits">Circuits</a>
+      <a href="#stack">Stack</a>
+      <a href="#honesty">Status</a>
+      <a href="#access">Run it</a>
+      <a class="nav-cta" href="https://github.com/indrajitguha/ai_chain_network" style="color:var(--accent)">GitHub &nearr;</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <canvas id="net" aria-hidden="true"></canvas>
+  <div class="hero-inner">
+    <div class="eyebrow rv">research prototype &middot; GPL-3.0 &middot; built in the open</div>
+    <h1 class="rv d1">AI inference,<br>proven <span class="dim">on-chain.</span></h1>
+    <p class="hero-sub rv d2">
+      An experimental blockchain where compute nodes run model layers in deterministic
+      WASM, back results with Groth16 zkSNARKs, and settle disputes with bisection games —
+      so verification cost stays flat while models grow without bound.
+    </p>
+    <div class="cta-row rv d3">
+      <a class="btn primary" href="#access">Run a node</a>
+      <a class="btn" href="#wall">Read the numbers</a>
+    </div>
+  </div>
+</header>
+
+<!-- ================= THE WALL ================= -->
+<section id="wall">
+  <div class="wrap">
+    <h2 class="rv">Proving everything is impossible.<br>So we don't.</h2>
+    <p class="lede rv d1">
+      We measured it. Groth16-proving every layer of a 2.7B-parameter model takes about a week
+      per inference. A trillion parameters would take years. So verification here is statistical:
+      stake first, sample op-level SNARK proofs at random after results commit, and pay for a
+      full disputed-layer proof only when a game demands it.
+    </p>
+    <div class="stats rv d2">
+      <div class="stat">
+        <div class="num">~7 days</div>
+        <div class="lbl">to fully zk-prove one 2.7B-param inference<br><code>measured extrapolation, docs/ZK_BENCHMARKS.md</code></div>
+      </div>
+      <div class="stat">
+        <div class="num mut">&asymp; const</div>
+        <div class="lbl">sampled verification cost &mdash; independent of model size<br><code>k proofs &times; ~0.1&ndash;0.7s each</code></div>
+      </div>
+      <div class="stat">
+        <div class="num">90%</div>
+        <div class="lbl">fraud detection with 22 sampled spot-checks<br><code>1 &minus; 0.9^22 &lt; 0.1 escape odds</code></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= CIRCUITS ================= -->
+<section id="circuits" style="background: var(--bg-raised);">
+  <div class="wrap">
+    <h2 class="rv">Five real Groth16 circuits,<br>not mockups.</h2>
+    <p class="lede rv d1">
+      Every operator below compiles with circom 2, has a bit-exact integer spec mirrored against
+      the WASM runtime by differential tests, and resolves on-chain disputes through the SNARK fast path.
+    </p>
+    <div class="bento rv d2">
+      <div class="cell wide tinted">
+        <span class="cstr">N&sup2;+N constraints</span>
+        <div class="op">matmul_slim</div>
+        <p>Dense layer core. Output-only commitment halved proof cost versus squaring every witness &mdash;
+        inputs are already bound by the arithmetic. Measured up to 64&times;64 (4,160 constraints, 119 ms native).</p>
+      </div>
+      <div class="cell wide">
+        <span class="cstr">376 constraints</span>
+        <div class="op">layernorm8</div>
+        <p>Integer sqrt proven by bounds witness, reciprocal proven two-sided, floor semantics locked to the WASM.</p>
+      </div>
+      <div class="cell narrow">
+        <span class="cstr">280</span>
+        <div class="op">relu8</div>
+        <p>Sign via 32-bit decomposition; branch forced by the circuit.</p>
+      </div>
+      <div class="cell narrow">
+        <span class="cstr">280</span>
+        <div class="op">argmax8</div>
+        <p>One-hot selection plus dominance proofs; ties resolve canonically.</p>
+      </div>
+      <div class="cell narrow">
+        <span class="cstr">552</span>
+        <div class="op">softmax8</div>
+        <p>Mirrors the WAT's hard-max rule exactly. Equality indicators instead of signed-bit tricks.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= STACK ================= -->
+<section id="stack">
+  <div class="wrap split">
+    <div>
+      <h2 class="rv">One runtime, one truth.</h2>
+      <ul class="stack-list rv d1">
+        <li><span class="tag">engine</span><span class="desc">Ed25519-signed blocks, fork resolution by hash weight, EIP-1559-style gas with policy multipliers</span></li>
+        <li><span class="tag">wasm</span><span class="desc">Q16.16 fixed-point ops &mdash; zero floating point anywhere in execution</span></li>
+        <li><span class="tag">zk</span><span class="desc">circom 2 circuits + trusted setup automation + native proving by default</span></li>
+        <li><span class="tag">games</span><span class="desc">challenge &rarr; bisect &rarr; proveStep, with a SNARK fast path that skips recompute</span></li>
+        <li><span class="tag">p2p</span><span class="desc">WebSocket gossip, identity-keyed peer dedup, live 3-node sync verified in CI-style tests</span></li>
+        <li><span class="tag">api</span><span class="desc">Express REST + token auth + rate limits + live dashboard on every node</span></li>
+      </ul>
+    </div>
+    <div class="terminal rv d2">
+      <div class="bar"><i></i><i></i><i></i></div>
+<pre><span class="c">$ git clone indrajitguha/ai_chain_network && cd ai_chain_network</span>
+<span class="p">$</span> npm install && npm run build
+<span class="p">$</span> npm run setup:rapidsnark   <span class="c"># native prover (optional, ~5x)</span>
+
+<span class="c"># three-node local network</span>
+<span class="p">$</span> npm run node1 &
+<span class="p">$</span> npm run node2 &
+<span class="p">$</span> npm run node3 &
+
+<span class="c"># open http://localhost:3001/dashboard</span>
+
+<span class="c">$ npm test</span>
+<span class="p">98 passing</span> <span class="c">(19 suites)</span></pre>
+    </div>
+  </div>
+</section>
+
+<!-- ================= HONESTY ================= -->
+<section id="honesty" style="background: var(--bg-raised);">
+  <div class="wrap">
+    <h2 class="rv">What&rsquo;s real. What isn&rsquo;t yet.</h2>
+    <p class="lede rv d1">
+      Research credibility comes from saying this out loud. The full table lives in ARCHITECTURE.md;
+      here is the shape of it.
+    </p>
+    <div class="chunks rv d2">
+      <div class="chunk">
+        <h3>Working today</h3>
+        <ul>
+          <li>Multi-node chain, P2P sync, reorg handling <span class="ok">real</span></li>
+          <li>5 circom circuits, proven end-to-end <span class="ok">real</span></li>
+          <li>Bisection dispute games + slashing <span class="ok">real</span></li>
+          <li>Gas market with policy pricing <span class="ok">real</span></li>
+          <li>SQLite persistence + JSON migration <span class="ok">real</span></li>
+        </ul>
+      </div>
+      <div class="chunk">
+        <h3>Prototype-grade</h3>
+        <ul>
+          <li>Circuits sized n=8 / 4&times;4 tiles <span class="warn">toy dims</span></li>
+          <li>Trusted setup run locally <span class="warn">no MPC</span></li>
+          <li>Weights generated deterministically <span class="warn">not IPFS</span></li>
+          <li>Single-validator block production <span class="warn">no BFT</span></li>
+        </ul>
+      </div>
+      <div class="chunk">
+        <h3>The honest ceiling</h3>
+        <ul>
+          <li>Full-proof frontier models <span class="warn">infeasible</span></li>
+          <li>True exp in softmax <span class="warn">deliberately omitted</span></li>
+          <li>Proof aggregation / folding schemes <span class="warn">roadmap</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= ACCESS ================= -->
+<section id="access">
+  <div class="wrap">
+    <h2 class="rv">Three ways in.</h2>
+    <div class="steps rv d1">
+      <div class="step">
+        <h3>Run a validator</h3>
+        <p>Earn gas fees and block rewards for producing blocks and settling disputes. One command per node; SQLite storage; token-gated admin API.</p>
+        <p style="margin-top:12px"><code>npm run node1</code></p>
+      </div>
+      <div class="step">
+        <h3>Serve inference</h3>
+        <p>Register a compute node, claim tasks matching your capacity, submit results with proofs. Reputation compounds; fraud gets slashed.</p>
+        <p style="margin-top:12px"><code>POST /tx registerNode</code></p>
+      </div>
+      <div class="step">
+        <h3>Build on the API</h3>
+        <p>Register models, submit inference tasks, stream status from any node&rsquo;s REST surface &mdash; or read the chain straight from SQLite.</p>
+        <p style="margin-top:12px"><code>GET /status &middot; GET /blocks</code></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= CTA BAND ================= -->
+<div class="band">
+  <div class="wrap">
+    <h2 class="rv">The experiment is public.<br>The spec is executable.</h2>
+    <p class="lede rv d1">Clone it, break it, prove things with it. GPL-3.0, 98 tests, no vaporware.</p>
+    <div class="cta-row rv d2">
+      <a class="btn primary" href="https://github.com/indrajitguha/ai_chain_network">Clone on GitHub</a>
+      <a class="btn" href="./ARCHITECTURE.md" style="pointer-events:none;opacity:.45">Architecture doc (on repo)</a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="wrap">
+    <div class="mono">ainative_chain &mdash; experimental AI-native blockchain</div>
+    <div class="mono">GPL-3.0 &middot; research prototype &middot; no token, no promises</div>
+  </div>
+</footer>
+
+<script>
+  // network mesh: motivated motion — it depicts the thing itself (P2P gossip).
+  // Static under prefers-reduced-motion (CSS hides canvas entirely).
+  (() => {
+    const cv = document.getElementById('net');
+    if (!cv || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const ctx = cv.getContext('2d');
+    let W, H, nodes = [], raf;
+    const AMBER = '232,163,61';
+
+    function resize() {
+      W = cv.width = innerWidth * devicePixelRatio;
+      H = cv.height = cv.parentElement.offsetHeight * devicePixelRatio;
+      cv.style.width = innerWidth + 'px';
+      const n = Math.min(46, Math.floor(innerWidth / 30));
+      nodes = Array.from({ length: n }, () => ({
+        x: Math.random() * W, y: Math.random() * H,
+        vx: (Math.random() - .5) * .22, vy: (Math.random() - .5) * .22,
+        r: (Math.random() * 1.6 + .7) * devicePixelRatio,
+      }));
+    }
+
+    function frame() {
+      ctx.clearRect(0, 0, W, H);
+      for (const p of nodes) {
+        p.x += p.vx; p.y += p.vy;
+        if (p.x < 0 || p.x > W) p.vx *= -1;
+        if (p.y < 0 || p.y > H) p.vy *= -1;
+      }
+      for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+          const a = nodes[i], b = nodes[j];
+          const dx = a.x - b.x, dy = a.y - b.y;
+          const d2 = dx * dx + dy * dy;
+          const R = 170 * devicePixelRatio;
+          if (d2 < R * R) {
+            const o = (1 - Math.sqrt(d2) / R) * .16;
+            ctx.strokeStyle = `rgba(${AMBER},${o})`;
+            ctx.lineWidth = devicePixelRatio * .7;
+            ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+          }
+        }
+      }
+      for (const p of nodes) {
+        ctx.fillStyle = `rgba(${AMBER},.55)`;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill();
+      }
+      raf = requestAnimationFrame(frame);
+    }
+
+    addEventListener('resize', resize);
+    resize(); frame();
+
+    // pause offscreen
+    new IntersectionObserver(([e]) => {
+      cancelAnimationFrame(raf);
+      if (e.isIntersecting) frame();
+    }).observe(cv);
+  })();
+
+  // scroll reveals
+  (() => {
+    const io = new IntersectionObserver((es) => {
+      es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+    }, { threshold: .15 });
+    document.querySelectorAll('.rv').forEach(el => io.observe(el));
+  })();
+</script>
+</body>
+</html>
