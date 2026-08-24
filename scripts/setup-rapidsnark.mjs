@@ -10,7 +10,7 @@
  */
 
 import { spawnSync } from 'child_process';
-import { mkdirSync, existsSync, rmSync, renameSync, chmodSync, createReadStream } from 'fs';
+import { mkdirSync, existsSync, rmSync, renameSync, chmodSync, writeFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { pipeline } from 'stream/promises';
 
