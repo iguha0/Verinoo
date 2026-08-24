@@ -1,0 +1,24 @@
+[Unit]
+Description=AINative chain node (%i)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ainative
+Group=ainative
+WorkingDirectory=/opt/ainative
+EnvironmentFile=/etc/ainative/%i.env
+ExecStart=/usr/bin/node dist/cli/index.js start --name=%i --port=${AIN_PORT} --p2p=${AIN_P2P} --db=${AIN_DB} ${AIN_EXTRA}
+Restart=always
+RestartSec=3
+
+# hardening
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/ainative
+
+[Install]
+WantedBy=multi-user.target
