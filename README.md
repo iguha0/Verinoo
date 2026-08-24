@@ -1,4 +1,6 @@
-# AINative Chain
+# Verinoo
+
+### An AI chain network — research prototype
 
 **An experimental AI-native blockchain where compute nodes run model layers in deterministic WASM, back results with Groth16 zkSNARKs, and settle disputes with bisection games — so verification cost stays flat while models grow without bound.**
 

@@ -1,5 +1,5 @@
 [Unit]
-Description=AINative chain node (%i)
+Description=Verinoo chain node (%i)
 After=network-online.target
 Wants=network-online.target
 
