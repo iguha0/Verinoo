@@ -24,6 +24,12 @@ const TARGETS = [
   { name: 'layernorm8', main: resolve(root, 'circuits', 'layernorm8.circom') },
   { name: 'zklayer_slim', main: resolve(root, 'circuits', 'zklayer_slim.circom') },
   { name: 'softmax8', main: resolve(root, 'circuits', 'softmax8.circom') },
+  { name: 'relu32', main: resolve(root, 'circuits', 'relu32.circom') },
+  { name: 'relu64', main: resolve(root, 'circuits', 'relu64.circom') },
+  { name: 'argmax64', main: resolve(root, 'circuits', 'argmax64.circom') },
+  { name: 'layernorm64', main: resolve(root, 'circuits', 'layernorm64.circom') },
+  { name: 'softmax64', main: resolve(root, 'circuits', 'softmax64.circom') },
+  { name: 'zklayer_slim_64', main: resolve(root, 'circuits', 'zklayer_slim_64.circom') },
 ];
 
 function run(cmd, args) {
