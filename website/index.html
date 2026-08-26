@@ -389,22 +389,22 @@
     </p>
     <div class="chunks rv d2">
       <div class="chunk">
-        <h3>Working today</h3>
+        <h3>Production Rust node</h3>
         <ul>
-          <li>Multi-node chain, P2P sync, reorg handling <span class="ok">real</span></li>
-          <li>5 circom circuits, proven end-to-end <span class="ok">real</span></li>
-          <li>Bisection dispute games + slashing <span class="ok">real</span></li>
-          <li>Gas market with policy pricing <span class="ok">real</span></li>
-          <li>SQLite persistence + JSON migration <span class="ok">real</span></li>
+          <li>Multi-validator rotation, staked registry <span class="ok">live</span></li>
+          <li>RocksDB persistence + Ed25519 anti-malleation <span class="ok">real</span></li>
+          <li>Dispute resolution with slashing enforcement <span class="ok">real</span></li>
+          <li>Native Q16.16 witnesses for all 5 ops <span class="ok">real</span></li>
+          <li>Faucet, metrics, CLI wallet, deploy kit <span class="ok">real</span></li>
         </ul>
       </div>
       <div class="chunk">
         <h3>Prototype-grade</h3>
         <ul>
           <li>Circuits sized n=8 / 4&times;4 tiles <span class="warn">toy dims</span></li>
-          <li>Trusted setup run locally <span class="warn">no MPC</span></li>
+          <li>Trusted setup run locally <span class="warn">no MPC ceremony</span></li>
           <li>Weights generated deterministically <span class="warn">not IPFS</span></li>
-          <li>Single-validator block production <span class="warn">no BFT</span></li>
+          <li>Consensus is rotation, not BFT <span class="warn">roadmap</span></li>
         </ul>
       </div>
       <div class="chunk">
@@ -412,7 +412,8 @@
         <ul>
           <li>Full-proof frontier models <span class="warn">infeasible</span></li>
           <li>True exp in softmax <span class="warn">deliberately omitted</span></li>
-          <li>Proof aggregation / folding schemes <span class="warn">roadmap</span></li>
+          <li>Folding schemes / proof aggregation <span class="warn">research track</span></li>
+          <li>Economic value on this chain <span class="warn">do not</span></li>
         </ul>
       </div>
     </div>
