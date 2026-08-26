@@ -38,3 +38,29 @@ export function publicKeyToAddress(publicKeyHex: string): string {
 export function sha256(input: string | Buffer): string {
   return crypto.createHash('sha256').update(input).digest('hex');
 }
+
+// ---- Real Ed25519 helpers (testnet/Rust-conformance scheme) ----
+
+export function generateKeyPairED() {
+  const pair = nacl.sign.keyPair();
+  const publicKey = Buffer.from(pair.publicKey).toString('hex');
+  const secretKey = pair.secretKey;
+  const hash = crypto.createHash('sha256').update(Buffer.from(publicKey, 'hex')).digest();
+  const address = `${PREFIX}_${hash.subarray(0, 20).toString('hex')}`;
+  return { publicKey, secretKey, address };
+}
+
+/** Ed25519 detached signature over the UTF-8 bytes of message. Returns hex. */
+export function signMessageED(message: string, secretKey: Uint8Array): string {
+  return Buffer.from(nacl.sign.detached(Buffer.from(message, 'utf-8'), secretKey)).toString('hex');
+}
+
+export function verifySignatureED(message: string, sigHex: string, publicKeyHex: string): boolean {
+  try {
+    const pk = Uint8Array.from(Buffer.from(publicKeyHex, 'hex'));
+    const sig = Uint8Array.from(Buffer.from(sigHex, 'hex'));
+    return nacl.sign.detached.verify(Buffer.from(message, 'utf-8'), sig, pk);
+  } catch {
+    return false;
+  }
+}

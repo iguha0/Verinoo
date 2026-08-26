@@ -1,8 +1,8 @@
 import crypto from 'crypto';
 import { BlockStore } from '../storage';
 import { Block, BlockHeader, Transaction, InferenceTask, ComputeNode, AgentAccount, AccountState, VerificationGame } from '../core/types';
-import { signMessage, sha256, verifySignature, publicKeyToAddress } from '../wallet/crypto';
-import { canonicalTxIdOf } from './canonical';
+import { signMessage, sha256, verifySignature, verifySignatureED, publicKeyToAddress } from '../wallet/crypto';
+import { canonicalTxIdOf, canonicalJson } from './canonical';
 import { getLayerSpec as zkGetLayerSpec } from '../zk';
 import { loadWasmSync, WasmRuntime } from '../wasm/runtime';
 import { gasCostFor, gasUsedOf, computeBaseFee, INITIAL_BASE_FEE, blockGasLimit, policyMultiplier, policyOf, isValidPolicy, VerificationPolicy } from './gas';
@@ -22,12 +22,17 @@ function hashHeader(h: BlockHeader): string {
   return sha256(JSON.stringify({ v: h.version, i: h.index, t: h.timestamp, p: h.previousHash, s: h.stateRoot, tx: h.txRoot, inf: h.inferenceTasksRoot, comp: h.computeRoot, val: h.validator }));
 }
 
+export type SignatureScheme = 'legacy' | 'ed25519';
+
 export class AINativeEngine {
   readonly store: BlockStore;
+  readonly signatureScheme: SignatureScheme;
+
   /** In-memory memo of baseFeeAt(height); always derivable from chain data. */
   private baseFeeMemo: { height: number; value: number } | null = null;
 
-  constructor(store: BlockStore) {
+  constructor(store: BlockStore, opts: { signatureScheme?: SignatureScheme } = {}) {
+    this.signatureScheme = opts.signatureScheme ?? 'legacy';
     this.store = store;
     if (this.store.getChainHeight() < 0) {
       const h: BlockHeader = {
@@ -75,7 +80,11 @@ export class AINativeEngine {
   validateTransaction(tx: Transaction): string | true {
     if (!tx.publicKey || !tx.signature) return 'missing sig';
     if (publicKeyToAddress(tx.publicKey) !== tx.from) return 'sig/from mismatch';
-    if (!verifySignature(tx.txId, tx.signature, tx.publicKey)) return 'invalid sig';
+    const sigOk =
+      this.signatureScheme === 'ed25519'
+        ? verifySignatureED(tx.txId, tx.signature, tx.publicKey)
+        : verifySignature(tx.txId, tx.signature, tx.publicKey);
+    if (!sigOk) return 'invalid sig';
     // Canonical binding: txId must be the hash of the exact unsigned payload.
     // Without this, signed transactions could be malleated after signing.
     if (tx.txId !== canonicalTxIdOf(tx)) return 'txId does not match transaction contents';
@@ -136,7 +145,7 @@ export class AINativeEngine {
         const data = d.data as any;
         const model = {
           ...data,
-          modelId: sha256(JSON.stringify(data) + tx.txId).substring(0, 32),
+          modelId: sha256(canonicalJson(data) + tx.txId).substring(0, 32),
           owner: tx.from, registeredAt: height, isActive: true,
         };
         this.store.setModel(model);
@@ -144,7 +153,7 @@ export class AINativeEngine {
       }
       case 'submitInference': {
         const data = d.data as any;
-        const taskId = sha256(JSON.stringify(data) + tx.txId).substring(0, 32);
+        const taskId = sha256(canonicalJson(data) + tx.txId).substring(0, 32);
         const verificationType: VerificationPolicy = policy ? policy : 'optimistic';
         this.store.setTask({ ...data, taskId, status: 'pending', verificationType });
         break;

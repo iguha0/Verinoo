@@ -4,7 +4,8 @@
 
 **An experimental AI-native blockchain where compute nodes run model layers in deterministic WASM, back results with Groth16 zkSNARKs, and settle disputes with bisection games — so verification cost stays flat while models grow without bound.**
 
-> Research prototype. Executable spec, not a product. Every number below is
+> **The production testnet node is built in Rust** at [iguha0/verinoo-node](https://github.com/iguha0/verinoo-node).
+> This TypeScript repository serves as the reference client and specification oracle. Every number below is
 > measured in this repo — see [docs/ZK_BENCHMARKS.md](docs/ZK_BENCHMARKS.md).
 
 | | |
