@@ -390,29 +390,32 @@
     </p>
     <div class="chunks rv d2">
       <div class="chunk">
-        <h3>Built and running</h3>
+        <h3>Rust testnet — running</h3>
         <ul>
-          <li>Multi-validator rotation, staked registry <span class="ok">live</span></li>
-          <li>Dispute games with slashing enforcement <span class="ok">live</span></li>
-          <li>Native Q16.16 witnesses for all 5 ops <span class="ok">Rust</span></li>
-          <li>Real Ed25519 + canonical anti-malleation <span class="ok">from genesis</span></li>
-          <li>Faucet, metrics, CLI wallet, deploy kit <span class="ok">shipped</span></li>
+          <li>Multi-validator rotation + staked registry <span class="ok">Rust · live</span></li>
+          <li>Dispute resolution via native Q16.16 witnesses <span class="ok">Rust</span></li>
+          <li>Slashing: bond transfer + validator removal on fraud <span class="ok">enforced</span></li>
+          <li>Stake-weighted leader selection alongside round-robin <span class="ok">both shipped</span></li>
+          <li>Circuits compiled at n=8, n=32, n=64 <span class="ok">pot14 setup</span></li>
+          <li>CLI wallet: generate / balance / send <span class="ok">end-to-end tested</span></li>
+          <li>Faucet + metrics + hostile-block gate + deploy kit <span class="ok">shipped</span></li>
         </ul>
       </div>
       <div class="chunk">
-        <h3>Design choices</h3>
+        <h3>Protocol design decisions</h3>
         <ul>
-          <li>Hybrid verification, not prove-everything <span class="tag2">the thesis</span></li>
-          <li>Hard-max softmax over real exp <span class="tag2">determinism first</span></li>
-          <li>Deterministic weights over IPFS <span class="tag2">reproducibility first</span></li>
+          <li>Hybrid verification over prove-everything <span class="tag2">the thesis</span></li>
+          <li>Canonical tx encoding with anti-malleation binding <span class="tag2">security</span></li>
+          <li>Hard-max softmax for deterministic verification <span class="tag2">by design</span></li>
+          <li>Column-major Q16.16 matmul matching WASM layout <span class="tag2">parity</span></li>
         </ul>
       </div>
       <div class="chunk">
         <h3>Next milestones</h3>
         <ul>
-          <li>Larger circuit tiles beyond n=8 <span class="dim">scaling</span></li>
-          <li>MPC trusted setup ceremony <span class="dim">security</span></li>
-          <li>Malachite BFT behind LeaderPolicy trait <span class="dim">consensus</span></li>
+          <li>Attention/matmul Q16.16 pipeline alignment <span class="dim">WASM analysis</span></li>
+          <li>MPC trusted setup ceremony (workflow documented) <span class="dim">ADR-001</span></li>
+          <li>Malachite BFT behind LeaderPolicy trait <span class="dim">ADR-002</span></li>
           <li>Folding schemes for proof aggregation <span class="dim">research</span></li>
         </ul>
       </div>
