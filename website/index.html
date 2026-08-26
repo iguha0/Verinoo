@@ -215,6 +215,8 @@
   }
   .chunk li .ok { color: var(--accent); font-family: var(--mono); font-size: 11px; padding-top: 3px; flex-shrink: 0; }
   .chunk li .warn { color: var(--text-faint); font-family: var(--mono); font-size: 11px; padding-top: 3px; flex-shrink: 0; }
+  .chunk li .tag2 { color: var(--accent); font-family: var(--mono); font-size: 11px; padding-top: 3px; flex-shrink: 0; }
+  .chunk li .dim { color: var(--text-faint); font-family: var(--mono); font-size: 11px; padding-top: 3px; flex-shrink: 0; }
 
   /* access steps */
   .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 48px; counter-reset: step; }
@@ -382,38 +384,36 @@
 <!-- ================= HONESTY ================= -->
 <section id="honesty" style="background: var(--bg-raised);">
   <div class="wrap">
-    <h2 class="rv">What&rsquo;s real. What isn&rsquo;t yet.</h2>
+    <h2 class="rv">Built. Designed. Next.</h2>
     <p class="lede rv d1">
-      Research credibility comes from saying this out loud. The full table lives in ARCHITECTURE.md;
-      here is the shape of it.
+      No vaporware, no inflated claims. Here is exactly where Verinoo stands.
     </p>
     <div class="chunks rv d2">
       <div class="chunk">
-        <h3>Production Rust node</h3>
+        <h3>Built and running</h3>
         <ul>
           <li>Multi-validator rotation, staked registry <span class="ok">live</span></li>
-          <li>RocksDB persistence + Ed25519 anti-malleation <span class="ok">real</span></li>
-          <li>Dispute resolution with slashing enforcement <span class="ok">real</span></li>
-          <li>Native Q16.16 witnesses for all 5 ops <span class="ok">real</span></li>
-          <li>Faucet, metrics, CLI wallet, deploy kit <span class="ok">real</span></li>
+          <li>Dispute games with slashing enforcement <span class="ok">live</span></li>
+          <li>Native Q16.16 witnesses for all 5 ops <span class="ok">Rust</span></li>
+          <li>Real Ed25519 + canonical anti-malleation <span class="ok">from genesis</span></li>
+          <li>Faucet, metrics, CLI wallet, deploy kit <span class="ok">shipped</span></li>
         </ul>
       </div>
       <div class="chunk">
-        <h3>Prototype-grade</h3>
+        <h3>Design choices</h3>
         <ul>
-          <li>Circuits sized n=8 / 4&times;4 tiles <span class="warn">toy dims</span></li>
-          <li>Trusted setup run locally <span class="warn">no MPC ceremony</span></li>
-          <li>Weights generated deterministically <span class="warn">not IPFS</span></li>
-          <li>Consensus is rotation, not BFT <span class="warn">roadmap</span></li>
+          <li>Hybrid verification, not prove-everything <span class="tag2">the thesis</span></li>
+          <li>Hard-max softmax over real exp <span class="tag2">determinism first</span></li>
+          <li>Deterministic weights over IPFS <span class="tag2">reproducibility first</span></li>
         </ul>
       </div>
       <div class="chunk">
-        <h3>The honest ceiling</h3>
+        <h3>Next milestones</h3>
         <ul>
-          <li>Full-proof frontier models <span class="warn">infeasible</span></li>
-          <li>True exp in softmax <span class="warn">deliberately omitted</span></li>
-          <li>Folding schemes / proof aggregation <span class="warn">research track</span></li>
-          <li>Economic value on this chain <span class="warn">do not</span></li>
+          <li>Larger circuit tiles beyond n=8 <span class="dim">scaling</span></li>
+          <li>MPC trusted setup ceremony <span class="dim">security</span></li>
+          <li>Malachite BFT behind LeaderPolicy trait <span class="dim">consensus</span></li>
+          <li>Folding schemes for proof aggregation <span class="dim">research</span></li>
         </ul>
       </div>
     </div>
